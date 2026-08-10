@@ -4,9 +4,10 @@ export interface User {
   id: string;
   username: string;
   displayName: string | null;
-  email: string | null;
+  email: string;
   createdAt: string;
   updatedAt: string;
+  emailVerifiedAt: string | null;
 }
 
 export interface ProjectModule {
@@ -332,7 +333,7 @@ export const api = {
     fetch(`${BASE}/projects/${projectId}/modules/${moduleId}`, { method: "DELETE" }),
 
   listUsers: () => fetch(`${BASE}/users`).then((r) => json<User[]>(r)),
-  createUser: (data: { username: string; displayName?: string; email?: string; password: string }) =>
+  createUser: (data: { username: string; displayName?: string; email: string; password: string }) =>
     fetch(`${BASE}/users`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -350,4 +351,29 @@ export const api = {
   searchTestCaseReport: (params: ReportSearchParams) =>
     fetch(`${BASE}/reports/test-cases?${reportQueryString(params)}`).then((r) => json<TestCaseReportSummary>(r)),
   reportExportUrl: (params: ReportSearchParams) => `${BASE}/reports/test-cases/export?${reportQueryString(params)}`,
+
+  authStatus: () => fetch(`${BASE}/auth/status`).then((r) => json<{ enabled: boolean }>(r)),
+  me: () => fetch(`${BASE}/auth/me`, { credentials: "include" }),
+  login: (data: { email: string; password: string }) =>
+    fetch(`${BASE}/auth/login`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    }),
+  verifyEmail: (data: { userId: string; code: string }) =>
+    fetch(`${BASE}/auth/verify-email`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    }),
+  resendCode: (userId: string) =>
+    fetch(`${BASE}/auth/resend-code`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId }),
+    }),
+  logout: () => fetch(`${BASE}/auth/logout`, { method: "POST", credentials: "include" }),
 };

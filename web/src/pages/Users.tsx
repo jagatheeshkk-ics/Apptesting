@@ -29,7 +29,7 @@ export default function Users() {
     setEditingId(user.id);
     setUsername(user.username);
     setDisplayName(user.displayName ?? "");
-    setEmail(user.email ?? "");
+    setEmail(user.email);
     setPassword("");
     setError(null);
   }
@@ -80,9 +80,10 @@ export default function Users() {
           </div>
           <div className="form-row">
             <label>
-              Email <span style={{ fontWeight: 400, color: "#59636e" }}>(for bug notifications)</span>
+              Email <span style={{ fontWeight: 400, color: "#59636e" }}>(used to log in — must be verified on first login)</span>
             </label>
             <input
+              required
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -117,6 +118,7 @@ export default function Users() {
               <th>Username</th>
               <th>Display Name</th>
               <th>Email</th>
+              <th>Email verified</th>
               <th>Created</th>
               <th></th>
             </tr>
@@ -126,7 +128,12 @@ export default function Users() {
               <tr key={u.id}>
                 <td>{u.username}</td>
                 <td>{u.displayName ?? "—"}</td>
-                <td>{u.email ?? "—"}</td>
+                <td>{u.email}</td>
+                <td>
+                  <span className={`badge ${u.emailVerifiedAt ? "pass" : "pending"}`}>
+                    {u.emailVerifiedAt ? "Verified" : "Not yet"}
+                  </span>
+                </td>
                 <td>{new Date(u.createdAt).toLocaleString()}</td>
                 <td style={{ display: "flex", gap: 8 }}>
                   <button onClick={() => startEdit(u)}>Edit</button>
@@ -138,7 +145,7 @@ export default function Users() {
             ))}
             {!users.length && (
               <tr>
-                <td colSpan={5}>No users yet.</td>
+                <td colSpan={6}>No users yet.</td>
               </tr>
             )}
           </tbody>

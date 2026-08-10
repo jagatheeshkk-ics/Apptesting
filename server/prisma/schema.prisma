@@ -17,16 +17,26 @@ datasource db {
 
 // A dashboard user directory (distinct from Account, which stores login
 // credentials the agent uses against a TARGET application). Passwords are
-// hashed (scrypt) and never returned by the API. This is a directory/CRUD
-// module only — it does not currently gate access to the dashboard.
+// hashed (scrypt) and never returned by the API.
+//
+// Login is gated by the AUTH_ENABLED env var (off by default). When on,
+// login is validated by email + password. A user's first successful
+// password check doesn't log them in yet — it issues a one-time
+// verification code to their email (proving they own the mailbox); once
+// verified, every later login is just email + password.
 model User {
   id           String   @id @default(cuid())
   username     String   @unique
   displayName  String?
-  email        String? // used for bug/finding notifications (not wired to sending yet)
+  email        String   @unique
   passwordHash String
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+
+  emailVerifiedAt           DateTime?
+  verificationCodeHash      String?
+  verificationCodeExpiresAt DateTime?
+  verificationAttempts      Int       @default(0)
 }
 
 // The top-level "project master" — an application/product under test.

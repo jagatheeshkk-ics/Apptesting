@@ -85,9 +85,36 @@ web/      React + Vite dashboard
   the application usage KPIs.
 - `User` — a dashboard user directory (add/edit/delete), separate from
   `Account`. Passwords are hashed (scrypt) and never returned by the API.
-  This is a directory only for now — it does not gate access to the
-  dashboard, and the notification email field isn't wired to actually send
-  anything yet.
+  `email` is required and unique — it's the login identifier. `emailVerifiedAt`
+  and the `verificationCode*` fields track the one-time email verification
+  described below.
+
+## Login & email verification
+
+Dashboard login is gated behind the `AUTH_ENABLED` env var (**off by
+default** — the dashboard behaves exactly as before until you turn it on).
+
+- **Off** (`AUTH_ENABLED` unset or not `"true"`): no login required, same as
+  before this feature existed.
+- **On**: every `/api/*` route except `/api/auth/*` and `/api/health`
+  requires a valid session cookie.
+
+Flow once enabled:
+1. An admin creates a user on the **Users** page (email + an initial
+   password).
+2. That user's *first* login (`POST /api/auth/login` with email + password)
+   validates the password but doesn't sign them in yet — it emails a 6-digit
+   code (15 min expiry) and the UI prompts for it (`POST
+   /api/auth/verify-email`).
+3. Every login after that first successful verification is just email +
+   password — no extra step.
+
+Required when `AUTH_ENABLED=true`:
+- `AUTH_SECRET` — a long random string used to sign session cookies. The
+  server refuses to start with `AUTH_ENABLED=true` and no `AUTH_SECRET`.
+- `SMTP_HOST` (+ `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`) — if
+  unset, the verification code is logged to the server console instead of
+  emailed, so you can test the flow before wiring up real SMTP.
 
 ## Database (Supabase)
 
