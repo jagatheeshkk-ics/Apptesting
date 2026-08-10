@@ -15,6 +15,20 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
+// A dashboard user directory (distinct from Account, which stores login
+// credentials the agent uses against a TARGET application). Passwords are
+// hashed (scrypt) and never returned by the API. This is a directory/CRUD
+// module only — it does not currently gate access to the dashboard.
+model User {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  displayName  String?
+  email        String? // used for bug/finding notifications (not wired to sending yet)
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
 // A login account the agent can use against a target application.
 // NOTE: credentials are stored in plaintext for this MVP because the agent
 // needs to actively re-type them into login forms during a run. Do not seed

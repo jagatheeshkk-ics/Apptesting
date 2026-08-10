@@ -1,5 +1,14 @@
 const BASE = "/api";
 
+export interface User {
+  id: string;
+  username: string;
+  displayName: string | null;
+  email: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Account {
   id: string;
   label: string;
@@ -199,4 +208,19 @@ export const api = {
       body: JSON.stringify(data),
     }).then((r) => json<TestFlow>(r)),
   deleteFlow: (id: string) => fetch(`${BASE}/flows/${id}`, { method: "DELETE" }),
+
+  listUsers: () => fetch(`${BASE}/users`).then((r) => json<User[]>(r)),
+  createUser: (data: { username: string; displayName?: string; email?: string; password: string }) =>
+    fetch(`${BASE}/users`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    }).then((r) => json<User>(r)),
+  updateUser: (id: string, data: { username?: string; displayName?: string; email?: string; password?: string }) =>
+    fetch(`${BASE}/users/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    }).then((r) => json<User>(r)),
+  deleteUser: (id: string) => fetch(`${BASE}/users/${id}`, { method: "DELETE" }),
 };

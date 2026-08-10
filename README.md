@@ -69,6 +69,11 @@ web/      React + Vite dashboard
   journey and its per-step execution outcomes.
 - `UsageEvent` — per-request timing/errors captured during the run, used for
   the application usage KPIs.
+- `User` — a dashboard user directory (add/edit/delete), separate from
+  `Account`. Passwords are hashed (scrypt) and never returned by the API.
+  This is a directory only for now — it does not gate access to the
+  dashboard, and the notification email field isn't wired to actually send
+  anything yet.
 
 ## Database (Supabase)
 
