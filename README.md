@@ -48,7 +48,7 @@ a login account), and the agent will:
 ## Project layout
 
 ```
-server/   Fastify + Prisma (SQLite) API and the testing agent (Playwright)
+server/   Fastify + Prisma (Supabase Postgres) API and the testing agent (Playwright)
 web/      React + Vite dashboard
 ```
 
@@ -70,17 +70,33 @@ web/      React + Vite dashboard
 - `UsageEvent` — per-request timing/errors captured during the run, used for
   the application usage KPIs.
 
+## Database (Supabase)
+
+Data is stored in a Supabase Postgres database via Prisma. To set one up:
+
+1. Create a project at [supabase.com](https://supabase.com) (the free tier works fine).
+2. In **Project Settings → Database**, copy the **Connection string** in both
+   pooled (Transaction mode, port 6543) and direct (Session mode, port 5432)
+   forms.
+3. Put them in `server/.env` as `DATABASE_URL` (pooled) and `DIRECT_URL`
+   (direct) — see `server/.env.example` for the exact shape. The pooled URL
+   is what the app uses at runtime; the direct URL is only used by Prisma
+   when running migrations (PgBouncer's pooling doesn't support the prepared
+   statements migrations rely on).
+4. Run the migration to create the tables (see below).
+
 ## Running locally
 
-Requires Node 20+.
+Requires Node 20+ and a Supabase project (see above).
 
 ```bash
 npm install
 
-# server: generate the Prisma client and create the local SQLite DB
 cp server/.env.example server/.env
+# edit server/.env with your Supabase DATABASE_URL / DIRECT_URL
+
 npm run prisma:generate -w server
-npm run prisma:push -w server
+npm run prisma:migrate -w server   # creates the tables in your Supabase DB
 
 # terminal 1
 npm run dev:server   # http://localhost:4000

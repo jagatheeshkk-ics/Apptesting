@@ -3,9 +3,16 @@ generator client {
   output   = "../generated/prisma"
 }
 
+// Supabase project's Postgres database. DATABASE_URL should be the pooled
+// ("Transaction" mode / port 6543) connection string for the app at runtime;
+// DIRECT_URL should be the direct ("Session" mode / port 5432) connection,
+// which Prisma needs for migrations since PgBouncer pooling doesn't support
+// the prepared statements `prisma migrate` relies on. Both are on Supabase's
+// Project Settings -> Database page.
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 // A login account the agent can use against a target application.
