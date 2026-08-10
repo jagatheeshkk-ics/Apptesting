@@ -1,0 +1,15 @@
+{
+  "name": "apptesting",
+  "private": true,
+  "version": "0.1.0",
+  "description": "AI-agent powered application testing platform: crawl a URL, identify modules, run smoke/boundary/vulnerability tests, generate a report, and monitor per-account KPIs.",
+  "workspaces": [
+    "server",
+    "web"
+  ],
+  "scripts": {
+    "dev:server": "npm run dev -w server",
+    "dev:web": "npm run dev -w web",
+    "build": "npm run build -w server && npm run build -w web"
+  }
+}

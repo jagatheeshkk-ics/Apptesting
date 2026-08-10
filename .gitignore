@@ -1,0 +1,16 @@
+node_modules/
+dist/
+build/
+*.log
+.env
+.env.local
+
+# runtime data produced by test runs
+server/prisma/data/
+server/storage/screenshots/*
+server/storage/reports/*
+!server/storage/screenshots/.gitkeep
+!server/storage/reports/.gitkeep
+
+# generated prisma client
+server/generated/

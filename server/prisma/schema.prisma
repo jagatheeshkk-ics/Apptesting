@@ -1,0 +1,100 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// A login account the agent can use against a target application.
+// NOTE: credentials are stored in plaintext for this MVP because the agent
+// needs to actively re-type them into login forms during a run. Do not seed
+// this table with real production credentials — use dedicated test accounts.
+model Account {
+  id        String   @id @default(cuid())
+  label     String
+  targetUrl String
+  username  String
+  password  String
+  role      String? // e.g. "admin", "standard-user", "read-only"
+  createdAt DateTime @default(now())
+
+  testRuns TestRun[]
+}
+
+model TestRun {
+  id          String    @id @default(cuid())
+  targetUrl   String
+  accountId   String?
+  account     Account?  @relation(fields: [accountId], references: [id])
+  status      String    @default("pending") // pending | crawling | generating | executing | completed | failed
+  error       String?
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+  reportPath  String?
+
+  // rollup counters, updated as the run progresses
+  totalCases  Int @default(0)
+  passedCases Int @default(0)
+  failedCases Int @default(0)
+  errorCases  Int @default(0)
+
+  modules    Module[]
+  testCases  TestCase[]
+  usageEvents UsageEvent[]
+}
+
+// A discovered page/form/element cluster on the target application.
+model Module {
+  id         String  @id @default(cuid())
+  testRunId  String
+  testRun    TestRun @relation(fields: [testRunId], references: [id], onDelete: Cascade)
+  name       String
+  url        String
+  type       String // page | form | nav
+  fieldsJson String // JSON-encoded array of detected input fields (name, type, attrs)
+
+  testCases TestCase[]
+}
+
+model TestCase {
+  id          String  @id @default(cuid())
+  testRunId   String
+  testRun     TestRun @relation(fields: [testRunId], references: [id], onDelete: Cascade)
+  moduleId    String?
+  module      Module? @relation(fields: [moduleId], references: [id])
+  category    String // smoke | boundary | vulnerability
+  name        String
+  description String
+  inputJson   String? // JSON-encoded input(s) used for this case
+
+  result TestResult?
+}
+
+model TestResult {
+  id          String   @id @default(cuid())
+  testCaseId  String   @unique
+  testCase    TestCase @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
+  status      String // pass | fail | error
+  severity    String? // info | low | medium | high | critical (mainly for vulnerability cases)
+  actual      String // observed behavior / evidence
+  screenshotPath String?
+  durationMs  Int
+  createdAt   DateTime @default(now())
+}
+
+// Fine-grained usage/behavior events captured while the agent drives the
+// target app, used to compute application usage KPIs (response times, errors).
+model UsageEvent {
+  id           String   @id @default(cuid())
+  testRunId    String
+  testRun      TestRun  @relation(fields: [testRunId], references: [id], onDelete: Cascade)
+  url          String
+  method       String   @default("GET")
+  statusCode   Int?
+  responseMs   Int?
+  consoleError String?
+  createdAt    DateTime @default(now())
+}
