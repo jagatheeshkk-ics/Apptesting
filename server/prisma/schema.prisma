@@ -29,6 +29,35 @@ model User {
   updatedAt    DateTime @updatedAt
 }
 
+// The top-level "project master" — an application/product under test.
+// Test cases across all of a project's test runs are consolidated under it
+// for dashboard reporting, broken down by the project's defined modules.
+model Project {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+
+  modules   ProjectModule[]
+  accounts  Account[]
+  testRuns  TestRun[]
+  testFlows TestFlow[]
+}
+
+// A named module within a project's master module list (e.g. "Login",
+// "Checkout", "Reporting"). Reference data for organizing/reporting on a
+// project — not directly tied to the pages the crawler discovers per run.
+model ProjectModule {
+  id          String   @id @default(cuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+
+  @@unique([projectId, name])
+}
+
 // A login account the agent can use against a target application.
 // NOTE: credentials are stored in plaintext for this MVP because the agent
 // needs to actively re-type them into login forms during a run. Do not seed
@@ -40,6 +69,8 @@ model Account {
   username  String
   password  String
   role      String? // e.g. "admin", "standard-user", "read-only"
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
   createdAt DateTime @default(now())
 
   testRuns  TestRun[]
@@ -51,6 +82,8 @@ model TestRun {
   targetUrl   String
   accountId   String?
   account     Account?  @relation(fields: [accountId], references: [id])
+  projectId   String?
+  project     Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
   mode        String    @default("full") // full | quick (sanity check)
   status      String    @default("pending") // pending | crawling | generating | executing | completed | failed
   error       String?
@@ -150,6 +183,8 @@ model TestFlow {
   targetUrl String
   accountId String?
   account   Account? @relation(fields: [accountId], references: [id])
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
   createdAt DateTime @default(now())
 
   steps     FlowStep[]

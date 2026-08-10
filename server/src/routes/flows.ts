@@ -19,7 +19,7 @@ interface StepInput {
 export async function flowRoutes(app: FastifyInstance) {
   app.get("/api/flows", async () => {
     return prisma.testFlow.findMany({
-      include: { steps: { orderBy: { order: "asc" } }, account: true },
+      include: { steps: { orderBy: { order: "asc" } }, account: true, project: true },
       orderBy: { createdAt: "desc" },
     });
   });
@@ -28,14 +28,14 @@ export async function flowRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
     const flow = await prisma.testFlow.findUnique({
       where: { id },
-      include: { steps: { orderBy: { order: "asc" } }, account: true },
+      include: { steps: { orderBy: { order: "asc" } }, account: true, project: true },
     });
     if (!flow) return reply.code(404).send({ error: "not found" });
     return flow;
   });
 
   app.post("/api/flows", async (req, reply) => {
-    const body = req.body as { label: string; targetUrl: string; accountId?: string; steps: StepInput[] };
+    const body = req.body as { label: string; targetUrl: string; accountId?: string; projectId?: string; steps: StepInput[] };
     if (!body.label || !body.targetUrl || !Array.isArray(body.steps) || !body.steps.length) {
       return reply.code(400).send({ error: "label, targetUrl, and at least one step are required" });
     }
@@ -45,11 +45,18 @@ export async function flowRoutes(app: FastifyInstance) {
       }
     }
 
+    let projectId = body.projectId || null;
+    if (!projectId && body.accountId) {
+      const account = await prisma.account.findUnique({ where: { id: body.accountId } });
+      projectId = account?.projectId ?? null;
+    }
+
     const flow = await prisma.testFlow.create({
       data: {
         label: body.label,
         targetUrl: body.targetUrl,
         accountId: body.accountId || null,
+        projectId,
         steps: {
           create: body.steps.map((s, i) => ({
             order: i,

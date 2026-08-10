@@ -9,12 +9,29 @@ export interface User {
   updatedAt: string;
 }
 
+export interface ProjectModule {
+  id: string;
+  projectId: string;
+  name: string;
+  description: string | null;
+  createdAt: string;
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  description: string | null;
+  createdAt: string;
+  modules: ProjectModule[];
+}
+
 export interface Account {
   id: string;
   label: string;
   targetUrl: string;
   username: string;
   role: string | null;
+  projectId: string | null;
   createdAt: string;
 }
 
@@ -23,6 +40,8 @@ export interface TestRun {
   targetUrl: string;
   accountId: string | null;
   account: Account | null;
+  projectId: string | null;
+  project: Project | null;
   mode: "full" | "quick";
   status: string;
   error: string | null;
@@ -164,8 +183,43 @@ export interface TestFlow {
   targetUrl: string;
   accountId: string | null;
   account: Account | null;
+  projectId: string | null;
+  project: Project | null;
   createdAt: string;
   steps: FlowStep[];
+}
+
+export interface ModuleBreakdown {
+  moduleName: string;
+  totalCases: number;
+  passedCases: number;
+  failedCases: number;
+  errorCases: number;
+}
+
+export interface ProjectKpi {
+  projectId: string | null;
+  name: string;
+  description: string | null;
+  definedModules: { id: string; name: string; description: string | null }[];
+  totalRuns: number;
+  totalCases: number;
+  passedCases: number;
+  failedCases: number;
+  errorCases: number;
+  passRate: number;
+  vulnerabilitiesFound: number;
+  moduleBreakdown: ModuleBreakdown[];
+  lastRunAt: string | null;
+}
+
+export interface ProjectKpiSummary {
+  grandTotalRuns: number;
+  grandTotalCases: number;
+  grandPassedCases: number;
+  grandFailedCases: number;
+  grandErrorCases: number;
+  projects: ProjectKpi[];
 }
 
 async function json<T>(res: Response): Promise<T> {
@@ -175,7 +229,14 @@ async function json<T>(res: Response): Promise<T> {
 
 export const api = {
   listAccounts: () => fetch(`${BASE}/accounts`).then((r) => json<Account[]>(r)),
-  createAccount: (data: { label: string; targetUrl: string; username: string; password: string; role?: string }) =>
+  createAccount: (data: {
+    label: string;
+    targetUrl: string;
+    username: string;
+    password: string;
+    role?: string;
+    projectId?: string;
+  }) =>
     fetch(`${BASE}/accounts`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -185,7 +246,7 @@ export const api = {
 
   listTestRuns: () => fetch(`${BASE}/test-runs`).then((r) => json<TestRun[]>(r)),
   getTestRun: (id: string) => fetch(`${BASE}/test-runs/${id}`).then((r) => json<TestRunDetail>(r)),
-  createTestRun: (data: { targetUrl: string; accountId?: string; mode?: "full" | "quick" }) =>
+  createTestRun: (data: { targetUrl: string; accountId?: string; projectId?: string; mode?: "full" | "quick" }) =>
     fetch(`${BASE}/test-runs`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -194,12 +255,14 @@ export const api = {
 
   accountKpis: () => fetch(`${BASE}/kpi/accounts`).then((r) => json<AccountKpi[]>(r)),
   agentKpi: () => fetch(`${BASE}/kpi/agent`).then((r) => json<AgentPerformanceKpi>(r)),
+  projectKpis: () => fetch(`${BASE}/kpi/projects`).then((r) => json<ProjectKpiSummary>(r)),
 
   listFlows: () => fetch(`${BASE}/flows`).then((r) => json<TestFlow[]>(r)),
   createFlow: (data: {
     label: string;
     targetUrl: string;
     accountId?: string;
+    projectId?: string;
     steps: { action: FlowAction; selector?: string; value?: string }[];
   }) =>
     fetch(`${BASE}/flows`, {
@@ -208,6 +271,23 @@ export const api = {
       body: JSON.stringify(data),
     }).then((r) => json<TestFlow>(r)),
   deleteFlow: (id: string) => fetch(`${BASE}/flows/${id}`, { method: "DELETE" }),
+
+  listProjects: () => fetch(`${BASE}/projects`).then((r) => json<Project[]>(r)),
+  createProject: (data: { name: string; description?: string }) =>
+    fetch(`${BASE}/projects`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    }).then((r) => json<Project>(r)),
+  deleteProject: (id: string) => fetch(`${BASE}/projects/${id}`, { method: "DELETE" }),
+  addProjectModule: (projectId: string, data: { name: string; description?: string }) =>
+    fetch(`${BASE}/projects/${projectId}/modules`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    }).then((r) => json<ProjectModule>(r)),
+  deleteProjectModule: (projectId: string, moduleId: string) =>
+    fetch(`${BASE}/projects/${projectId}/modules/${moduleId}`, { method: "DELETE" }),
 
   listUsers: () => fetch(`${BASE}/users`).then((r) => json<User[]>(r)),
   createUser: (data: { username: string; displayName?: string; email?: string; password: string }) =>

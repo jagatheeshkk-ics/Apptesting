@@ -8,6 +8,7 @@ import { testRunRoutes } from "./routes/testRuns.js";
 import { kpiRoutes } from "./routes/kpi.js";
 import { flowRoutes } from "./routes/flows.js";
 import { userRoutes } from "./routes/users.js";
+import { projectRoutes } from "./routes/projects.js";
 import { REPORT_DIR, SCREENSHOT_DIR } from "./agent/runner.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -29,6 +30,7 @@ await app.register(testRunRoutes);
 await app.register(kpiRoutes);
 await app.register(flowRoutes);
 await app.register(userRoutes);
+await app.register(projectRoutes);
 
 app.get("/api/health", async () => ({ ok: true }));
 

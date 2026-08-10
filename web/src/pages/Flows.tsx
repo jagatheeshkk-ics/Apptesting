@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from "react";
-import { Account, FlowAction, TestFlow, api } from "../api.js";
+import { Account, FlowAction, Project, TestFlow, api } from "../api.js";
 
 const ACTIONS: { value: FlowAction; label: string; needsSelector: boolean; needsValue: boolean }[] = [
   { value: "navigate", label: "Navigate to URL", needsSelector: false, needsValue: true },
@@ -19,9 +19,11 @@ interface DraftStep {
 export default function Flows() {
   const [flows, setFlows] = useState<TestFlow[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [label, setLabel] = useState("");
   const [targetUrl, setTargetUrl] = useState("");
   const [accountId, setAccountId] = useState("");
+  const [projectId, setProjectId] = useState("");
   const [steps, setSteps] = useState<DraftStep[]>([]);
   const [draftAction, setDraftAction] = useState<FlowAction>("navigate");
   const [draftSelector, setDraftSelector] = useState("");
@@ -31,6 +33,7 @@ export default function Flows() {
   function load() {
     api.listFlows().then(setFlows).catch(() => {});
     api.listAccounts().then(setAccounts).catch(() => {});
+    api.listProjects().then(setProjects).catch(() => {});
   }
 
   useEffect(load, []);
@@ -55,10 +58,11 @@ export default function Flows() {
       return;
     }
     try {
-      await api.createFlow({ label, targetUrl, accountId: accountId || undefined, steps });
+      await api.createFlow({ label, targetUrl, accountId: accountId || undefined, projectId: projectId || undefined, steps });
       setLabel("");
       setTargetUrl("");
       setAccountId("");
+      setProjectId("");
       setSteps([]);
       load();
     } catch (err) {
@@ -104,6 +108,17 @@ export default function Flows() {
               {accounts.map((a) => (
                 <option key={a.id} value={a.id}>
                   {a.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="form-row">
+            <label>Project (optional)</label>
+            <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+              <option value="">None / Unassigned</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
                 </option>
               ))}
             </select>
@@ -192,6 +207,7 @@ export default function Flows() {
               <th>Label</th>
               <th>Target URL</th>
               <th>Account</th>
+              <th>Project</th>
               <th>Steps</th>
               <th></th>
             </tr>
@@ -202,6 +218,7 @@ export default function Flows() {
                 <td>{f.label}</td>
                 <td>{f.targetUrl}</td>
                 <td>{f.account?.label ?? "Any"}</td>
+                <td>{f.project?.name ?? "—"}</td>
                 <td>{f.steps.length}</td>
                 <td>
                   <button className="danger" onClick={() => onDelete(f.id)}>
@@ -212,7 +229,7 @@ export default function Flows() {
             ))}
             {!flows.length && (
               <tr>
-                <td colSpan={5}>No flows yet.</td>
+                <td colSpan={6}>No flows yet.</td>
               </tr>
             )}
           </tbody>

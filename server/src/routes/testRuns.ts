@@ -5,7 +5,7 @@ import { runTestRun } from "../agent/runner.js";
 export async function testRunRoutes(app: FastifyInstance) {
   app.get("/api/test-runs", async () => {
     return prisma.testRun.findMany({
-      include: { account: true },
+      include: { account: true, project: true },
       orderBy: { startedAt: "desc" },
     });
   });
@@ -16,6 +16,7 @@ export async function testRunRoutes(app: FastifyInstance) {
       where: { id },
       include: {
         account: true,
+        project: true,
         testCases: {
           include: {
             result: true,
@@ -37,11 +38,22 @@ export async function testRunRoutes(app: FastifyInstance) {
   });
 
   app.post("/api/test-runs", async (req, reply) => {
-    const body = req.body as { targetUrl: string; accountId?: string; mode?: "full" | "quick" };
+    const body = req.body as { targetUrl: string; accountId?: string; projectId?: string; mode?: "full" | "quick" };
     if (!body.targetUrl) return reply.code(400).send({ error: "targetUrl is required" });
 
+    let projectId = body.projectId || null;
+    if (!projectId && body.accountId) {
+      const account = await prisma.account.findUnique({ where: { id: body.accountId } });
+      projectId = account?.projectId ?? null;
+    }
+
     const run = await prisma.testRun.create({
-      data: { targetUrl: body.targetUrl, accountId: body.accountId || null, mode: body.mode === "quick" ? "quick" : "full" },
+      data: {
+        targetUrl: body.targetUrl,
+        accountId: body.accountId || null,
+        projectId,
+        mode: body.mode === "quick" ? "quick" : "full",
+      },
     });
 
     // fire-and-forget; the run progresses asynchronously and the UI polls status

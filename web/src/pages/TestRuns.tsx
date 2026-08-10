@@ -21,6 +21,7 @@ export default function TestRuns() {
             <tr>
               <th>Target</th>
               <th>Account</th>
+              <th>Project</th>
               <th>Status</th>
               <th>Pass / Fail / Error</th>
               <th>Started</th>
@@ -32,6 +33,7 @@ export default function TestRuns() {
               <tr key={r.id}>
                 <td>{r.targetUrl}</td>
                 <td>{r.account?.label ?? "—"}</td>
+                <td>{r.project?.name ?? "—"}</td>
                 <td>
                   <span className={`badge ${r.status}`}>{r.status}</span>
                 </td>
@@ -48,7 +50,7 @@ export default function TestRuns() {
             ))}
             {!runs.length && (
               <tr>
-                <td colSpan={6}>No test runs yet.</td>
+                <td colSpan={7}>No test runs yet.</td>
               </tr>
             )}
           </tbody>

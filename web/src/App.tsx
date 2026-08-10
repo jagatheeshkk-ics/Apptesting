@@ -5,6 +5,7 @@ import TestRunDetail from "./pages/TestRunDetail.js";
 import Accounts from "./pages/Accounts.js";
 import Flows from "./pages/Flows.js";
 import Users from "./pages/Users.js";
+import Projects from "./pages/Projects.js";
 import KpiDashboard from "./pages/KpiDashboard.js";
 
 export default function App() {
@@ -16,6 +17,7 @@ export default function App() {
           New test run
         </NavLink>
         <NavLink to="/runs">Test runs</NavLink>
+        <NavLink to="/projects">Projects</NavLink>
         <NavLink to="/accounts">Accounts</NavLink>
         <NavLink to="/flows">Flows</NavLink>
         <NavLink to="/users">Users</NavLink>
@@ -26,6 +28,7 @@ export default function App() {
           <Route path="/" element={<NewTestRun />} />
           <Route path="/runs" element={<TestRuns />} />
           <Route path="/runs/:id" element={<TestRunDetail />} />
+          <Route path="/projects" element={<Projects />} />
           <Route path="/accounts" element={<Accounts />} />
           <Route path="/flows" element={<Flows />} />
           <Route path="/users" element={<Users />} />

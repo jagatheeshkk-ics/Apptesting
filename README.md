@@ -54,6 +54,16 @@ web/      React + Vite dashboard
 
 ## Data model
 
+- `Project` / `ProjectModule` — the project master. A `Project` is the
+  application/product under test; `ProjectModule` is its master list of
+  named modules (e.g. "Login", "Checkout"). `Account`, `TestRun`, and
+  `TestFlow` each optionally link to a `Project` (a test run inherits its
+  account's project if none is given explicitly), so every test case run
+  under a project rolls up into consolidated, project-wise counts on the
+  **Projects** dashboard page — broken down further by the (crawl-
+  discovered) module each case belongs to. Runs with no project attached
+  are grouped under an "Unassigned" bucket so nothing is left out of the
+  consolidated totals.
 - `Account` — a login account the agent can use against a target app (label,
   URL, username/password, role). **Use dedicated test/QA credentials only** —
   passwords are stored so the agent can resubmit them into login forms.

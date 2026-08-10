@@ -1,17 +1,20 @@
 import { FormEvent, useEffect, useState } from "react";
-import { Account, api } from "../api.js";
+import { Account, Project, api } from "../api.js";
 
 export default function Accounts() {
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [label, setLabel] = useState("");
   const [targetUrl, setTargetUrl] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState("");
+  const [projectId, setProjectId] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   function load() {
     api.listAccounts().then(setAccounts).catch(() => {});
+    api.listProjects().then(setProjects).catch(() => {});
   }
 
   useEffect(load, []);
@@ -20,12 +23,13 @@ export default function Accounts() {
     e.preventDefault();
     setError(null);
     try {
-      await api.createAccount({ label, targetUrl, username, password, role: role || undefined });
+      await api.createAccount({ label, targetUrl, username, password, role: role || undefined, projectId: projectId || undefined });
       setLabel("");
       setTargetUrl("");
       setUsername("");
       setPassword("");
       setRole("");
+      setProjectId("");
       load();
     } catch (err) {
       setError((err as Error).message);
@@ -72,6 +76,17 @@ export default function Accounts() {
             <label>Role (optional)</label>
             <input value={role} onChange={(e) => setRole(e.target.value)} placeholder="admin, standard-user…" />
           </div>
+          <div className="form-row">
+            <label>Project (optional)</label>
+            <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+              <option value="">None</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </div>
           {error && <p style={{ color: "#cf222e" }}>{error}</p>}
           <button className="primary" type="submit">
             Add account
@@ -87,6 +102,7 @@ export default function Accounts() {
               <th>Target</th>
               <th>Username</th>
               <th>Role</th>
+              <th>Project</th>
               <th></th>
             </tr>
           </thead>
@@ -97,6 +113,7 @@ export default function Accounts() {
                 <td>{a.targetUrl}</td>
                 <td>{a.username}</td>
                 <td>{a.role ?? "—"}</td>
+                <td>{projects.find((p) => p.id === a.projectId)?.name ?? "—"}</td>
                 <td>
                   <button className="danger" onClick={() => onDelete(a.id)}>
                     Remove
@@ -106,7 +123,7 @@ export default function Accounts() {
             ))}
             {!accounts.length && (
               <tr>
-                <td colSpan={5}>No accounts yet.</td>
+                <td colSpan={6}>No accounts yet.</td>
               </tr>
             )}
           </tbody>

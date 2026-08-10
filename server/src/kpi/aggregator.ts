@@ -1,5 +1,112 @@
 import { prisma } from "../db.js";
 
+export interface ModuleBreakdown {
+  moduleName: string;
+  totalCases: number;
+  passedCases: number;
+  failedCases: number;
+  errorCases: number;
+}
+
+export interface ProjectKpi {
+  projectId: string | null; // null = "Unassigned" bucket (runs/accounts with no project set)
+  name: string;
+  description: string | null;
+  definedModules: { id: string; name: string; description: string | null }[];
+  totalRuns: number;
+  totalCases: number;
+  passedCases: number;
+  failedCases: number;
+  errorCases: number;
+  passRate: number;
+  vulnerabilitiesFound: number;
+  moduleBreakdown: ModuleBreakdown[];
+  lastRunAt: string | null;
+}
+
+export interface ProjectKpiSummary {
+  grandTotalRuns: number;
+  grandTotalCases: number;
+  grandPassedCases: number;
+  grandFailedCases: number;
+  grandErrorCases: number;
+  projects: ProjectKpi[];
+}
+
+export async function computeProjectKpis(): Promise<ProjectKpiSummary> {
+  const [projects, testRuns] = await Promise.all([
+    prisma.project.findMany({ include: { modules: true }, orderBy: { createdAt: "asc" } }),
+    prisma.testRun.findMany({
+      include: { testCases: { include: { result: true, module: true } } },
+    }),
+  ]);
+
+  function summarize(projectId: string | null, name: string, description: string | null, definedModules: ProjectKpi["definedModules"]): ProjectKpi {
+    const runs = testRuns.filter((r) => r.projectId === projectId);
+    const cases = runs.flatMap((r) => r.testCases);
+    const withResult = cases.filter((c) => c.result);
+    const passed = withResult.filter((c) => c.result!.status === "pass").length;
+    const failed = withResult.filter((c) => c.result!.status === "fail").length;
+    const errored = withResult.filter((c) => c.result!.status === "error").length;
+    const vulns = withResult.filter((c) => c.category === "vulnerability" && c.result!.status === "fail").length;
+
+    const byModule = new Map<string, ModuleBreakdown>();
+    for (const c of cases) {
+      const moduleName = c.module?.name ?? "Unmapped";
+      const entry = byModule.get(moduleName) ?? { moduleName, totalCases: 0, passedCases: 0, failedCases: 0, errorCases: 0 };
+      entry.totalCases += 1;
+      if (c.result?.status === "pass") entry.passedCases += 1;
+      else if (c.result?.status === "fail") entry.failedCases += 1;
+      else if (c.result?.status === "error") entry.errorCases += 1;
+      byModule.set(moduleName, entry);
+    }
+
+    const lastRun = runs.sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime())[0];
+
+    return {
+      projectId,
+      name,
+      description,
+      definedModules,
+      totalRuns: runs.length,
+      totalCases: cases.length,
+      passedCases: passed,
+      failedCases: failed,
+      errorCases: errored,
+      passRate: withResult.length ? passed / withResult.length : 0,
+      vulnerabilitiesFound: vulns,
+      moduleBreakdown: Array.from(byModule.values()).sort((a, b) => b.totalCases - a.totalCases),
+      lastRunAt: lastRun ? lastRun.startedAt.toISOString() : null,
+    };
+  }
+
+  const projectKpis = projects.map((p) =>
+    summarize(
+      p.id,
+      p.name,
+      p.description,
+      p.modules.map((m) => ({ id: m.id, name: m.name, description: m.description }))
+    )
+  );
+
+  const unassignedRuns = testRuns.filter((r) => !r.projectId);
+  if (unassignedRuns.length) {
+    projectKpis.push(summarize(null, "Unassigned", "Test runs not linked to a project", []));
+  }
+
+  const allCases = testRuns.flatMap((r) => r.testCases);
+  const allWithResult = allCases.filter((c) => c.result);
+
+  return {
+    grandTotalRuns: testRuns.length,
+    grandTotalCases: allCases.length,
+    grandPassedCases: allWithResult.filter((c) => c.result!.status === "pass").length,
+    grandFailedCases: allWithResult.filter((c) => c.result!.status === "fail").length,
+    grandErrorCases: allWithResult.filter((c) => c.result!.status === "error").length,
+    projects: projectKpis,
+  };
+}
+
 export interface AccountKpi {
   accountId: string;
   label: string;
