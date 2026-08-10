@@ -16,20 +16,32 @@ export async function testRunRoutes(app: FastifyInstance) {
       where: { id },
       include: {
         account: true,
-        testCases: { include: { result: true, module: true, stressMetric: true } },
+        testCases: {
+          include: {
+            result: true,
+            module: true,
+            stressMetric: true,
+            performanceMetric: true,
+            flowStepResults: { orderBy: { order: "asc" } },
+            testFlow: true,
+          },
+        },
         modules: true,
       },
     });
     if (!run) return reply.code(404).send({ error: "not found" });
-    return run;
+    return {
+      ...run,
+      regressions: run.regressionsJson ? JSON.parse(run.regressionsJson) : null,
+    };
   });
 
   app.post("/api/test-runs", async (req, reply) => {
-    const body = req.body as { targetUrl: string; accountId?: string };
+    const body = req.body as { targetUrl: string; accountId?: string; mode?: "full" | "quick" };
     if (!body.targetUrl) return reply.code(400).send({ error: "targetUrl is required" });
 
     const run = await prisma.testRun.create({
-      data: { targetUrl: body.targetUrl, accountId: body.accountId || null },
+      data: { targetUrl: body.targetUrl, accountId: body.accountId || null, mode: body.mode === "quick" ? "quick" : "full" },
     });
 
     // fire-and-forget; the run progresses asynchronously and the UI polls status

@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { prisma } from "../db.js";
+import { RegressionSummary } from "../analysis/regression.js";
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -16,15 +17,35 @@ export async function buildHtmlReport(testRunId: string, reportDir: string, scre
     where: { id: testRunId },
     include: {
       account: true,
-      testCases: { include: { result: true, module: true, stressMetric: true } },
+      testCases: {
+        include: {
+          result: true,
+          module: true,
+          stressMetric: true,
+          performanceMetric: true,
+          flowStepResults: { orderBy: { order: "asc" } },
+          testFlow: true,
+        },
+      },
     },
   });
 
-  const byCategory: Record<string, typeof run.testCases> = { smoke: [], boundary: [], vulnerability: [], stress: [] };
+  const byCategory: Record<string, typeof run.testCases> = {
+    smoke: [],
+    boundary: [],
+    vulnerability: [],
+    stress: [],
+    performance: [],
+    compatibility: [],
+    accessibility: [],
+    flow: [],
+  };
   for (const tc of run.testCases) byCategory[tc.category]?.push(tc);
 
   const vulnFindings = byCategory.vulnerability.filter((tc) => tc.result?.status === "fail");
   const stressFindings = byCategory.stress.filter((tc) => tc.result?.status === "fail");
+
+  const regressions: RegressionSummary | null = run.regressionsJson ? JSON.parse(run.regressionsJson) : null;
 
   const sectionHtml = (title: string, cases: typeof run.testCases) => {
     if (!cases.length) return "";
@@ -77,6 +98,79 @@ export async function buildHtmlReport(testRunId: string, reportDir: string, scre
       </table>`;
   };
 
+  const performanceSectionHtml = (cases: typeof run.testCases) => {
+    if (!cases.length) return "";
+    const rows = cases
+      .map((tc) => {
+        const r = tc.result;
+        const m = tc.performanceMetric;
+        return `<tr>
+          <td>${escapeHtml(tc.name)}</td>
+          <td>${r ? statusBadge(r.status) : "—"}</td>
+          <td>${m ? `${m.domContentLoadedMs}ms` : "—"}</td>
+          <td>${m ? `${m.loadEventMs}ms` : "—"}</td>
+          <td>${m ? `${m.resourceCount}` : "—"}</td>
+          <td>${m ? `${m.transferSizeKb}KB` : "—"}</td>
+        </tr>`;
+      })
+      .join("\n");
+    return `
+      <h2>Performance tests (${cases.length})</h2>
+      <table>
+        <thead><tr><th>Test case</th><th>Status</th><th>DOMContentLoaded</th><th>Load event</th><th>Resources</th><th>Transfer size</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  };
+
+  const flowSectionHtml = (cases: typeof run.testCases) => {
+    if (!cases.length) return "";
+    const blocks = cases
+      .map((tc) => {
+        const r = tc.result;
+        const steps = tc.flowStepResults
+          .map(
+            (s) => `<tr>
+          <td>${s.order + 1}</td>
+          <td>${escapeHtml(s.action)}</td>
+          <td>${statusBadge(s.status)}</td>
+          <td>${escapeHtml(s.detail)}</td>
+          <td>${
+            s.screenshotPath
+              ? `<a href="../screenshots/${s.screenshotPath}" target="_blank"><img src="../screenshots/${s.screenshotPath}" style="max-width:100px;border:1px solid #ddd;border-radius:4px" /></a>`
+              : "—"
+          }</td>
+        </tr>`,
+          )
+          .join("\n");
+        return `
+        <h3>${escapeHtml(tc.name)} ${r ? statusBadge(r.status) : ""}</h3>
+        <p style="color:#59636e">${escapeHtml(r?.actual ?? "")}</p>
+        <table>
+          <thead><tr><th>#</th><th>Action</th><th>Status</th><th>Detail</th><th>Screenshot</th></tr></thead>
+          <tbody>${steps}</tbody>
+        </table>`;
+      })
+      .join("\n");
+    return `<h2>Flow tests (${cases.length})</h2>${blocks}`;
+  };
+
+  const regressionHtml = () => {
+    if (!regressions || !regressions.previousRunId) return "";
+    const list = (title: string, entries: RegressionSummary["regressed"]) =>
+      entries.length
+        ? `<h3>${title} (${entries.length})</h3><ul>${entries
+            .map((e) => `<li>[${escapeHtml(e.category)}] ${escapeHtml(e.name)}: ${e.previousStatus} → ${e.currentStatus}</li>`)
+            .join("")}</ul>`
+        : "";
+    if (!regressions.regressed.length && !regressions.fixed.length) return "";
+    return `
+      <div class="findings" style="background:#fff8f6;border-color:${regressions.regressed.length ? "#ffb3a3" : "#a3d9a5"}">
+        <strong>Regression check vs. previous run</strong>
+        ${list("Regressed (previously passing, now failing)", regressions.regressed)}
+        ${list("Fixed since last run", regressions.fixed)}
+      </div>`;
+  };
+
   const html = `<!doctype html>
 <html>
 <head>
@@ -94,6 +188,7 @@ export async function buildHtmlReport(testRunId: string, reportDir: string, scre
   th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #eaeef2; font-size: 13px; vertical-align: top; }
   th { background: #f6f8fa; }
   .findings { background: #fff8f6; border: 1px solid #ffb3a3; border-radius: 8px; padding: 16px; margin-bottom: 24px; }
+  .findings ul { margin: 4px 0; padding-left: 20px; font-size: 13px; }
 </style>
 </head>
 <body>
@@ -101,6 +196,7 @@ export async function buildHtmlReport(testRunId: string, reportDir: string, scre
   <div class="meta">
     Target: <strong>${escapeHtml(run.targetUrl)}</strong><br/>
     Account: ${run.account ? escapeHtml(run.account.label) + " (" + escapeHtml(run.account.role ?? "n/a") + ")" : "None (anonymous)"}<br/>
+    Mode: ${escapeHtml(run.mode)}<br/>
     Run started: ${run.startedAt.toISOString()}<br/>
     Run completed: ${run.completedAt?.toISOString() ?? "—"}
   </div>
@@ -124,11 +220,16 @@ export async function buildHtmlReport(testRunId: string, reportDir: string, scre
       ? `<div class="findings"><strong>⚠ ${stressFindings.length} module(s) showed elevated error rate or latency under concurrent load.</strong></div>`
       : ""
   }
+  ${regressionHtml()}
 
   ${sectionHtml("Smoke tests", byCategory.smoke)}
   ${sectionHtml("Boundary value tests", byCategory.boundary)}
   ${sectionHtml("Vulnerability tests", byCategory.vulnerability)}
   ${stressSectionHtml(byCategory.stress)}
+  ${performanceSectionHtml(byCategory.performance)}
+  ${sectionHtml("Compatibility tests", byCategory.compatibility)}
+  ${sectionHtml("Accessibility tests", byCategory.accessibility)}
+  ${flowSectionHtml(byCategory.flow)}
 </body>
 </html>`;
 

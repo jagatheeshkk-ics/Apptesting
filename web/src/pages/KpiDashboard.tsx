@@ -55,6 +55,22 @@ export default function KpiDashboard() {
               <div className="n">{agentKpi.avgStressP95LatencyMs != null ? `${agentKpi.avgStressP95LatencyMs}ms` : "—"}</div>
               <div className="l">Avg P95 latency under load</div>
             </div>
+            <div className="kpi-tile">
+              <div className="n">{agentKpi.totalPerformanceIssues}</div>
+              <div className="l">Performance issues found</div>
+            </div>
+            <div className="kpi-tile">
+              <div className="n">{agentKpi.totalAccessibilityIssues}</div>
+              <div className="l">Accessibility issues found</div>
+            </div>
+            <div className="kpi-tile">
+              <div className="n">{agentKpi.totalFlowRuns}</div>
+              <div className="l">Flow tests run</div>
+            </div>
+            <div className="kpi-tile">
+              <div className="n">{agentKpi.flowPassRate != null ? `${Math.round(agentKpi.flowPassRate * 100)}%` : "—"}</div>
+              <div className="l">Flow pass rate</div>
+            </div>
           </div>
         )}
       </div>
@@ -74,6 +90,8 @@ export default function KpiDashboard() {
               <th>Errors seen</th>
               <th>Stress error rate</th>
               <th>Stress P95 latency</th>
+              <th>Perf issues</th>
+              <th>A11y issues</th>
               <th>Last run</th>
             </tr>
           </thead>
@@ -90,12 +108,14 @@ export default function KpiDashboard() {
                 <td>{k.errorEventCount}</td>
                 <td>{k.avgStressErrorRatePct != null ? `${k.avgStressErrorRatePct}%` : "—"}</td>
                 <td>{k.avgStressP95LatencyMs != null ? `${k.avgStressP95LatencyMs}ms` : "—"}</td>
+                <td>{k.performanceIssuesFound}</td>
+                <td>{k.accessibilityIssuesFound}</td>
                 <td>{k.lastRunAt ? new Date(k.lastRunAt).toLocaleString() : "—"}</td>
               </tr>
             ))}
             {!accountKpis.length && (
               <tr>
-                <td colSpan={11}>No account activity yet.</td>
+                <td colSpan={13}>No account activity yet.</td>
               </tr>
             )}
           </tbody>

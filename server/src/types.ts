@@ -34,8 +34,18 @@ export interface DetectedModule {
   submitSelector?: string;
 }
 
+export type TestCategory =
+  | "smoke"
+  | "boundary"
+  | "vulnerability"
+  | "stress"
+  | "performance"
+  | "compatibility"
+  | "accessibility"
+  | "flow";
+
 export interface GeneratedTestCase {
-  category: "smoke" | "boundary" | "vulnerability" | "stress";
+  category: TestCategory;
   name: string;
   description: string;
   moduleName: string;
@@ -43,6 +53,12 @@ export interface GeneratedTestCase {
   // For boundary/vulnerability cases run against a specific field
   targetField?: string;
   expectation: string;
+}
+
+export interface ViewportPreset {
+  name: string;
+  width: number;
+  height: number;
 }
 
 export interface ExecutedResult {

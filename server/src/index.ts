@@ -6,6 +6,7 @@ import cors from "@fastify/cors";
 import { accountRoutes } from "./routes/accounts.js";
 import { testRunRoutes } from "./routes/testRuns.js";
 import { kpiRoutes } from "./routes/kpi.js";
+import { flowRoutes } from "./routes/flows.js";
 import { REPORT_DIR, SCREENSHOT_DIR } from "./agent/runner.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -25,6 +26,7 @@ try {
 await app.register(accountRoutes);
 await app.register(testRunRoutes);
 await app.register(kpiRoutes);
+await app.register(flowRoutes);
 
 app.get("/api/health", async () => ({ ok: true }));
 

@@ -6,14 +6,59 @@ import { generateSmokeTests } from "./testGenerators/smoke.js";
 import { generateBoundaryTests } from "./testGenerators/boundary.js";
 import { generateVulnerabilityTests } from "./testGenerators/vulnerability.js";
 import { generateStressTests } from "./testGenerators/stress.js";
+import { generatePerformanceTests } from "./testGenerators/performance.js";
+import { generateCompatibilityTests } from "./testGenerators/compatibility.js";
+import { generateAccessibilityTests } from "./testGenerators/accessibility.js";
 import { executeBoundaryCase, executeSmokeCase, executeVulnerabilityCase } from "./executor.js";
 import { executeStressCase } from "./stressExecutor.js";
+import { executePerformanceCase } from "./performanceExecutor.js";
+import { executeCompatibilityCase } from "./compatibilityExecutor.js";
+import { executeAccessibilityCase } from "./accessibilityExecutor.js";
+import { executeFlow } from "./flowExecutor.js";
+import { computeRegressions } from "../analysis/regression.js";
 import { buildHtmlReport } from "../report/reportBuilder.js";
 import { DetectedModule, GeneratedTestCase } from "../types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const SCREENSHOT_DIR = path.join(__dirname, "..", "..", "storage", "screenshots");
 export const REPORT_DIR = path.join(__dirname, "..", "..", "storage", "reports");
+
+async function buildGeneratedCases(modules: DetectedModule[], mode: string, run: { targetUrl: string; accountId: string | null; id: string }): Promise<GeneratedTestCase[]> {
+  const full: GeneratedTestCase[] = [
+    ...generateSmokeTests(modules),
+    ...generateBoundaryTests(modules),
+    ...generateVulnerabilityTests(modules),
+    ...generateStressTests(modules),
+    ...generatePerformanceTests(modules),
+    ...generateCompatibilityTests(modules),
+    ...generateAccessibilityTests(modules),
+  ];
+
+  if (mode !== "quick") return full;
+
+  // Sanity mode: smoke everywhere, plus only the specific cases that failed
+  // in the most recent prior completed run for this same target/account.
+  const previousRun = await prisma.testRun.findFirst({
+    where: {
+      targetUrl: run.targetUrl,
+      accountId: run.accountId,
+      status: "completed",
+      id: { not: run.id },
+    },
+    orderBy: { startedAt: "desc" },
+    include: { testCases: { include: { result: true } } },
+  });
+
+  if (!previousRun) {
+    return full.filter((tc) => tc.category === "smoke");
+  }
+
+  const failedNames = new Set(
+    previousRun.testCases.filter((c) => c.result && c.result.status !== "pass").map((c) => c.name),
+  );
+
+  return full.filter((tc) => tc.category === "smoke" || failedNames.has(tc.name));
+}
 
 export async function runTestRun(testRunId: string): Promise<void> {
   const run = await prisma.testRun.findUniqueOrThrow({ where: { id: testRunId }, include: { account: true } });
@@ -59,22 +104,35 @@ export async function runTestRun(testRunId: string): Promise<void> {
 
     await prisma.testRun.update({ where: { id: testRunId }, data: { status: "generating" } });
 
-    const generated: GeneratedTestCase[] = [
-      ...generateSmokeTests(modules),
-      ...generateBoundaryTests(modules),
-      ...generateVulnerabilityTests(modules),
-      ...generateStressTests(modules),
-    ];
+    const generated = await buildGeneratedCases(modules, run.mode, {
+      targetUrl: run.targetUrl,
+      accountId: run.accountId,
+      id: run.id,
+    });
+
+    const matchingFlows = await prisma.testFlow.findMany({
+      where: {
+        targetUrl: run.targetUrl,
+        OR: [{ accountId: null }, { accountId: run.accountId }],
+      },
+      include: { steps: true },
+    });
 
     await prisma.testRun.update({
       where: { id: testRunId },
-      data: { status: "executing", totalCases: generated.length },
+      data: { status: "executing", totalCases: generated.length + matchingFlows.length },
     });
 
     const page = await context.newPage();
     let passed = 0;
     let failed = 0;
     let errored = 0;
+
+    const tally = (status: string) => {
+      if (status === "pass") passed++;
+      else if (status === "fail") failed++;
+      else errored++;
+    };
 
     for (const tc of generated) {
       const module = moduleByName.get(tc.moduleName);
@@ -94,6 +152,7 @@ export async function runTestRun(testRunId: string): Promise<void> {
 
       let result;
       let stressMetrics: Awaited<ReturnType<typeof executeStressCase>>["metrics"] | undefined;
+      let perfMetrics: Awaited<ReturnType<typeof executePerformanceCase>>["metrics"] | undefined;
       try {
         if (tc.category === "smoke") {
           result = await executeSmokeCase(page, tc, module, SCREENSHOT_DIR);
@@ -101,6 +160,14 @@ export async function runTestRun(testRunId: string): Promise<void> {
           result = await executeBoundaryCase(page, tc, module, SCREENSHOT_DIR);
         } else if (tc.category === "vulnerability") {
           result = await executeVulnerabilityCase(page, tc, module, SCREENSHOT_DIR);
+        } else if (tc.category === "performance") {
+          const perf = await executePerformanceCase(page, module, SCREENSHOT_DIR);
+          result = perf.result;
+          perfMetrics = perf.metrics;
+        } else if (tc.category === "compatibility") {
+          result = await executeCompatibilityCase(page, tc, module, SCREENSHOT_DIR);
+        } else if (tc.category === "accessibility") {
+          result = await executeAccessibilityCase(page, module, SCREENSHOT_DIR);
         } else {
           const stress = await executeStressCase(tc.name, module, (o) => {
             prisma.usageEvent
@@ -123,9 +190,7 @@ export async function runTestRun(testRunId: string): Promise<void> {
         result = { status: "error" as const, actual: `Unhandled error: ${(err as Error).message}`, durationMs: 0 };
       }
 
-      if (result.status === "pass") passed++;
-      else if (result.status === "fail") failed++;
-      else errored++;
+      tally(result.status);
 
       await prisma.testResult.create({
         data: {
@@ -152,6 +217,72 @@ export async function runTestRun(testRunId: string): Promise<void> {
         });
       }
 
+      if (perfMetrics) {
+        await prisma.performanceMetric.create({
+          data: {
+            testCaseId: caseRecord.id,
+            domContentLoadedMs: perfMetrics.domContentLoadedMs,
+            loadEventMs: perfMetrics.loadEventMs,
+            resourceCount: perfMetrics.resourceCount,
+            transferSizeKb: perfMetrics.transferSizeKb,
+          },
+        });
+      }
+
+      await prisma.testRun.update({
+        where: { id: testRunId },
+        data: { passedCases: passed, failedCases: failed, errorCases: errored },
+      });
+    }
+
+    for (const flow of matchingFlows) {
+      const caseRecord = await prisma.testCase.create({
+        data: {
+          testRunId,
+          testFlowId: flow.id,
+          category: "flow",
+          name: `Flow: ${flow.label}`,
+          description: `Multi-step flow with ${flow.steps.length} step(s), covering integration/system/functional/UAT-style checks.`,
+        },
+      });
+
+      let overallStatus: "pass" | "fail" | "error" = "error";
+      let summary = "";
+      try {
+        const flowResult = await executeFlow(page, flow.steps, SCREENSHOT_DIR);
+        overallStatus = flowResult.overallStatus;
+        summary = flowResult.summary;
+
+        await Promise.all(
+          flowResult.stepOutcomes.map((s) =>
+            prisma.flowStepResult.create({
+              data: {
+                testCaseId: caseRecord.id,
+                order: s.order,
+                action: s.action,
+                status: s.status,
+                detail: s.detail,
+                screenshotPath: s.screenshotPath,
+                durationMs: s.durationMs,
+              },
+            }),
+          ),
+        );
+      } catch (err) {
+        summary = `Unhandled error: ${(err as Error).message}`;
+      }
+
+      tally(overallStatus);
+
+      await prisma.testResult.create({
+        data: {
+          testCaseId: caseRecord.id,
+          status: overallStatus,
+          actual: summary,
+          durationMs: 0,
+        },
+      });
+
       await prisma.testRun.update({
         where: { id: testRunId },
         data: { passedCases: passed, failedCases: failed, errorCases: errored },
@@ -164,6 +295,12 @@ export async function runTestRun(testRunId: string): Promise<void> {
     const finished = await prisma.testRun.update({
       where: { id: testRunId },
       data: { status: "completed", completedAt: new Date() },
+    });
+
+    const regressions = await computeRegressions(testRunId);
+    await prisma.testRun.update({
+      where: { id: testRunId },
+      data: { regressionsJson: JSON.stringify(regressions) },
     });
 
     const reportPath = await buildHtmlReport(finished.id, REPORT_DIR, SCREENSHOT_DIR);

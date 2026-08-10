@@ -21,7 +21,8 @@ model Account {
   role      String? // e.g. "admin", "standard-user", "read-only"
   createdAt DateTime @default(now())
 
-  testRuns TestRun[]
+  testRuns  TestRun[]
+  testFlows TestFlow[]
 }
 
 model TestRun {
@@ -29,11 +30,13 @@ model TestRun {
   targetUrl   String
   accountId   String?
   account     Account?  @relation(fields: [accountId], references: [id])
+  mode        String    @default("full") // full | quick (sanity check)
   status      String    @default("pending") // pending | crawling | generating | executing | completed | failed
   error       String?
   startedAt   DateTime  @default(now())
   completedAt DateTime?
   reportPath  String?
+  regressionsJson String? // JSON-encoded diff vs the previous run for this target (regressed/fixed case names)
 
   // rollup counters, updated as the run progresses
   totalCases  Int @default(0)
@@ -65,13 +68,17 @@ model TestCase {
   testRun     TestRun @relation(fields: [testRunId], references: [id], onDelete: Cascade)
   moduleId    String?
   module      Module? @relation(fields: [moduleId], references: [id])
-  category    String // smoke | boundary | vulnerability | stress
+  testFlowId  String?
+  testFlow    TestFlow? @relation(fields: [testFlowId], references: [id])
+  category    String // smoke | boundary | vulnerability | stress | performance | compatibility | accessibility | flow
   name        String
   description String
   inputJson   String? // JSON-encoded input(s) used for this case
 
-  result       TestResult?
-  stressMetric StressMetric?
+  result            TestResult?
+  stressMetric      StressMetric?
+  performanceMetric PerformanceMetric?
+  flowStepResults   FlowStepResult[]
 }
 
 model TestResult {
@@ -99,6 +106,56 @@ model StressMetric {
   avgLatencyMs  Int
   p95LatencyMs  Int
   createdAt     DateTime @default(now())
+}
+
+// Navigation-timing / page-weight metrics for a "performance" category TestCase.
+model PerformanceMetric {
+  id                   String   @id @default(cuid())
+  testCaseId           String   @unique
+  testCase             TestCase @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
+  domContentLoadedMs   Int
+  loadEventMs          Int
+  resourceCount        Int
+  transferSizeKb       Int
+  createdAt            DateTime @default(now())
+}
+
+// A user-authored, reusable multi-step journey (e.g. login -> add to cart ->
+// checkout -> expect confirmation), used to cover integration/system/
+// functional/UAT-style testing that can't be inferred from crawling alone.
+model TestFlow {
+  id        String   @id @default(cuid())
+  label     String
+  targetUrl String
+  accountId String?
+  account   Account? @relation(fields: [accountId], references: [id])
+  createdAt DateTime @default(now())
+
+  steps     FlowStep[]
+  testCases TestCase[]
+}
+
+model FlowStep {
+  id         String   @id @default(cuid())
+  testFlowId String
+  testFlow   TestFlow @relation(fields: [testFlowId], references: [id], onDelete: Cascade)
+  order      Int
+  action     String // navigate | fill | click | expectUrlContains | expectTextContains | expectElementVisible
+  selector   String?
+  value      String?
+}
+
+model FlowStepResult {
+  id             String   @id @default(cuid())
+  testCaseId     String
+  testCase       TestCase @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
+  order          Int
+  action         String
+  status         String // pass | fail | error
+  detail         String
+  screenshotPath String?
+  durationMs     Int
+  createdAt      DateTime @default(now())
 }
 
 // Fine-grained usage/behavior events captured while the agent drives the

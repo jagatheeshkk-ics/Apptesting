@@ -14,6 +14,7 @@ export interface TestRun {
   targetUrl: string;
   accountId: string | null;
   account: Account | null;
+  mode: "full" | "quick";
   status: string;
   error: string | null;
   startedAt: string;
@@ -43,18 +44,60 @@ export interface StressMetric {
   p95LatencyMs: number;
 }
 
+export interface PerformanceMetric {
+  domContentLoadedMs: number;
+  loadEventMs: number;
+  resourceCount: number;
+  transferSizeKb: number;
+}
+
+export interface FlowStepResult {
+  order: number;
+  action: string;
+  status: "pass" | "fail" | "error";
+  detail: string;
+  screenshotPath: string | null;
+  durationMs: number;
+}
+
+export type TestCategory =
+  | "smoke"
+  | "boundary"
+  | "vulnerability"
+  | "stress"
+  | "performance"
+  | "compatibility"
+  | "accessibility"
+  | "flow";
+
 export interface TestCase {
   id: string;
-  category: "smoke" | "boundary" | "vulnerability" | "stress";
+  category: TestCategory;
   name: string;
   description: string;
   inputJson: string | null;
   result: TestResult | null;
   stressMetric?: StressMetric | null;
+  performanceMetric?: PerformanceMetric | null;
+  flowStepResults?: FlowStepResult[];
+}
+
+export interface RegressionEntry {
+  category: string;
+  name: string;
+  previousStatus: string;
+  currentStatus: string;
+}
+
+export interface RegressionSummary {
+  previousRunId: string | null;
+  regressed: RegressionEntry[];
+  fixed: RegressionEntry[];
 }
 
 export interface TestRunDetail extends TestRun {
   testCases: TestCase[];
+  regressions: RegressionSummary | null;
 }
 
 export interface AccountKpi {
@@ -69,6 +112,8 @@ export interface AccountKpi {
   errorEventCount: number;
   avgStressErrorRatePct: number | null;
   avgStressP95LatencyMs: number | null;
+  accessibilityIssuesFound: number;
+  performanceIssuesFound: number;
   lastRunAt: string | null;
 }
 
@@ -82,7 +127,36 @@ export interface AgentPerformanceKpi {
   totalStressTests: number;
   avgStressErrorRatePct: number | null;
   avgStressP95LatencyMs: number | null;
+  totalAccessibilityIssues: number;
+  totalPerformanceIssues: number;
+  totalFlowRuns: number;
+  flowPassRate: number | null;
   runsOverTime: { date: string; runs: number; vulnerabilities: number }[];
+}
+
+export type FlowAction =
+  | "navigate"
+  | "fill"
+  | "click"
+  | "expectUrlContains"
+  | "expectTextContains"
+  | "expectElementVisible";
+
+export interface FlowStep {
+  order: number;
+  action: FlowAction;
+  selector: string | null;
+  value: string | null;
+}
+
+export interface TestFlow {
+  id: string;
+  label: string;
+  targetUrl: string;
+  accountId: string | null;
+  account: Account | null;
+  createdAt: string;
+  steps: FlowStep[];
 }
 
 async function json<T>(res: Response): Promise<T> {
@@ -102,7 +176,7 @@ export const api = {
 
   listTestRuns: () => fetch(`${BASE}/test-runs`).then((r) => json<TestRun[]>(r)),
   getTestRun: (id: string) => fetch(`${BASE}/test-runs/${id}`).then((r) => json<TestRunDetail>(r)),
-  createTestRun: (data: { targetUrl: string; accountId?: string }) =>
+  createTestRun: (data: { targetUrl: string; accountId?: string; mode?: "full" | "quick" }) =>
     fetch(`${BASE}/test-runs`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -111,4 +185,18 @@ export const api = {
 
   accountKpis: () => fetch(`${BASE}/kpi/accounts`).then((r) => json<AccountKpi[]>(r)),
   agentKpi: () => fetch(`${BASE}/kpi/agent`).then((r) => json<AgentPerformanceKpi>(r)),
+
+  listFlows: () => fetch(`${BASE}/flows`).then((r) => json<TestFlow[]>(r)),
+  createFlow: (data: {
+    label: string;
+    targetUrl: string;
+    accountId?: string;
+    steps: { action: FlowAction; selector?: string; value?: string }[];
+  }) =>
+    fetch(`${BASE}/flows`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    }).then((r) => json<TestFlow>(r)),
+  deleteFlow: (id: string) => fetch(`${BASE}/flows/${id}`, { method: "DELETE" }),
 };

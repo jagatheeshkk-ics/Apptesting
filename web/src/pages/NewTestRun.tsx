@@ -6,6 +6,7 @@ export default function NewTestRun() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [targetUrl, setTargetUrl] = useState("");
   const [accountId, setAccountId] = useState("");
+  const [mode, setMode] = useState<"full" | "quick">("full");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
@@ -19,7 +20,7 @@ export default function NewTestRun() {
     setSubmitting(true);
     setError(null);
     try {
-      const run = await api.createTestRun({ targetUrl, accountId: accountId || undefined });
+      const run = await api.createTestRun({ targetUrl, accountId: accountId || undefined, mode });
       navigate(`/runs/${run.id}`);
     } catch (err) {
       setError((err as Error).message);
@@ -56,6 +57,13 @@ export default function NewTestRun() {
                   {a.label} ({a.role ?? "no role"})
                 </option>
               ))}
+            </select>
+          </div>
+          <div className="form-row">
+            <label>Run mode</label>
+            <select value={mode} onChange={(e) => setMode(e.target.value as "full" | "quick")}>
+              <option value="full">Full — smoke, boundary, vulnerability, stress, performance, compatibility, accessibility, flows</option>
+              <option value="quick">Quick (sanity check) — smoke tests plus only cases that failed last run</option>
             </select>
           </div>
           {error && <p style={{ color: "#cf222e" }}>{error}</p>}

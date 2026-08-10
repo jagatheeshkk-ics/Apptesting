@@ -12,6 +12,8 @@ export interface AccountKpi {
   errorEventCount: number;
   avgStressErrorRatePct: number | null;
   avgStressP95LatencyMs: number | null;
+  accessibilityIssuesFound: number;
+  performanceIssuesFound: number;
   lastRunAt: string | null;
 }
 
@@ -25,6 +27,10 @@ export interface AgentPerformanceKpi {
   totalStressTests: number;
   avgStressErrorRatePct: number | null;
   avgStressP95LatencyMs: number | null;
+  totalAccessibilityIssues: number;
+  totalPerformanceIssues: number;
+  totalFlowRuns: number;
+  flowPassRate: number | null;
   runsOverTime: { date: string; runs: number; vulnerabilities: number }[];
 }
 
@@ -51,6 +57,8 @@ export async function computeAccountKpis(): Promise<AccountKpi[]> {
     const errorEvents = usageEvents.filter((e) => e.consoleError || (e.statusCode && e.statusCode >= 400));
 
     const stressMetrics = allCases.map((c) => c.stressMetric).filter((m): m is NonNullable<typeof m> => !!m);
+    const accessibilityIssues = withResult.filter((c) => c.category === "accessibility" && c.result!.status === "fail").length;
+    const performanceIssues = withResult.filter((c) => c.category === "performance" && c.result!.status === "fail").length;
 
     const lastRun = acc.testRuns.sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime())[0];
 
@@ -72,6 +80,8 @@ export async function computeAccountKpis(): Promise<AccountKpi[]> {
       avgStressP95LatencyMs: stressMetrics.length
         ? Math.round(stressMetrics.reduce((a, m) => a + m.p95LatencyMs, 0) / stressMetrics.length)
         : null,
+      accessibilityIssuesFound: accessibilityIssues,
+      performanceIssuesFound: performanceIssues,
       lastRunAt: lastRun ? lastRun.startedAt.toISOString() : null,
     };
   });
@@ -107,10 +117,12 @@ export async function computeAgentPerformanceKpi(): Promise<AgentPerformanceKpi>
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([date, v]) => ({ date, ...v }));
 
-  const stressMetrics = runs
-    .flatMap((r) => r.testCases)
-    .map((c) => c.stressMetric)
-    .filter((m): m is NonNullable<typeof m> => !!m);
+  const allCases = runs.flatMap((r) => r.testCases);
+  const stressMetrics = allCases.map((c) => c.stressMetric).filter((m): m is NonNullable<typeof m> => !!m);
+  const accessibilityIssues = allCases.filter((c) => c.category === "accessibility" && c.result?.status === "fail").length;
+  const performanceIssues = allCases.filter((c) => c.category === "performance" && c.result?.status === "fail").length;
+  const flowCases = allCases.filter((c) => c.category === "flow" && c.result);
+  const flowPassed = flowCases.filter((c) => c.result!.status === "pass").length;
 
   return {
     totalRuns: runs.length,
@@ -126,6 +138,10 @@ export async function computeAgentPerformanceKpi(): Promise<AgentPerformanceKpi>
     avgStressP95LatencyMs: stressMetrics.length
       ? Math.round(stressMetrics.reduce((a, m) => a + m.p95LatencyMs, 0) / stressMetrics.length)
       : null,
+    totalAccessibilityIssues: accessibilityIssues,
+    totalPerformanceIssues: performanceIssues,
+    totalFlowRuns: flowCases.length,
+    flowPassRate: flowCases.length ? flowPassed / flowCases.length : null,
     runsOverTime,
   };
 }
