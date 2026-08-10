@@ -1,0 +1,15 @@
+node_modules
+**/node_modules
+**/dist
+**/build
+**/generated
+*.log
+*.tsbuildinfo
+.env
+.env.local
+server/prisma/data
+server/storage/screenshots/*
+server/storage/reports/*
+!server/storage/screenshots/.gitkeep
+!server/storage/reports/.gitkeep
+.git
