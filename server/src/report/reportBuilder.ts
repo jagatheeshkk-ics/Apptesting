@@ -2,15 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { prisma } from "../db.js";
 import { RegressionSummary } from "../analysis/regression.js";
-
-function escapeHtml(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
-
-function statusBadge(status: string): string {
-  const color = status === "pass" ? "#1a7f37" : status === "fail" ? "#cf222e" : "#9a6700";
-  return `<span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;color:#fff;background:${color}">${status.toUpperCase()}</span>`;
-}
+import { escapeHtml, statusBadge } from "./htmlHelpers.js";
 
 export async function buildHtmlReport(testRunId: string, reportDir: string, screenshotDir: string): Promise<string> {
   const run = await prisma.testRun.findUniqueOrThrow({

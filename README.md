@@ -44,6 +44,10 @@ a login account), and the agent will:
    rate, vulnerabilities/accessibility/performance issues found), application
    usage/behavior KPIs (response times, errors, latency under load), and
    agent performance KPIs (run duration, flow pass rate, findings over time).
+6. **Search test case results for a report** — filter across every run's test
+   cases by date range and by module (pick one module or several), on the
+   **Reports** dashboard page. Results show a pass/fail/error summary and can
+   be downloaded as a self-contained HTML report.
 
 ## Project layout
 

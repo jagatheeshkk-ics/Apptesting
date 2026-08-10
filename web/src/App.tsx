@@ -6,6 +6,7 @@ import Accounts from "./pages/Accounts.js";
 import Flows from "./pages/Flows.js";
 import Users from "./pages/Users.js";
 import Projects from "./pages/Projects.js";
+import Reports from "./pages/Reports.js";
 import KpiDashboard from "./pages/KpiDashboard.js";
 
 export default function App() {
@@ -21,6 +22,7 @@ export default function App() {
         <NavLink to="/accounts">Accounts</NavLink>
         <NavLink to="/flows">Flows</NavLink>
         <NavLink to="/users">Users</NavLink>
+        <NavLink to="/reports">Reports</NavLink>
         <NavLink to="/kpi">KPI dashboard</NavLink>
       </nav>
       <div className="content">
@@ -32,6 +34,7 @@ export default function App() {
           <Route path="/accounts" element={<Accounts />} />
           <Route path="/flows" element={<Flows />} />
           <Route path="/users" element={<Users />} />
+          <Route path="/reports" element={<Reports />} />
           <Route path="/kpi" element={<KpiDashboard />} />
         </Routes>
       </div>

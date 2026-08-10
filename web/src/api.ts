@@ -222,6 +222,48 @@ export interface ProjectKpiSummary {
   projects: ProjectKpi[];
 }
 
+export interface TestCaseReportRow {
+  id: string;
+  category: TestCategory;
+  name: string;
+  module: { name: string } | null;
+  result: {
+    status: "pass" | "fail" | "error";
+    severity: string | null;
+    actual: string;
+    durationMs: number;
+    createdAt: string;
+  } | null;
+  testRun: {
+    targetUrl: string;
+    account: { label: string } | null;
+    project: { name: string } | null;
+  };
+}
+
+export interface TestCaseReportSummary {
+  filters: { dateFrom: string | null; dateTo: string | null; moduleNames: string[] };
+  totalCases: number;
+  passedCases: number;
+  failedCases: number;
+  errorCases: number;
+  testCases: TestCaseReportRow[];
+}
+
+export interface ReportSearchParams {
+  dateFrom?: string;
+  dateTo?: string;
+  modules?: string[];
+}
+
+function reportQueryString(params: ReportSearchParams): string {
+  const qs = new URLSearchParams();
+  if (params.dateFrom) qs.set("dateFrom", params.dateFrom);
+  if (params.dateTo) qs.set("dateTo", params.dateTo);
+  (params.modules ?? []).forEach((m) => qs.append("module", m));
+  return qs.toString();
+}
+
 async function json<T>(res: Response): Promise<T> {
   if (!res.ok) throw new Error(await res.text());
   return res.json() as Promise<T>;
@@ -303,4 +345,9 @@ export const api = {
       body: JSON.stringify(data),
     }).then((r) => json<User>(r)),
   deleteUser: (id: string) => fetch(`${BASE}/users/${id}`, { method: "DELETE" }),
+
+  listReportModules: () => fetch(`${BASE}/reports/modules`).then((r) => json<string[]>(r)),
+  searchTestCaseReport: (params: ReportSearchParams) =>
+    fetch(`${BASE}/reports/test-cases?${reportQueryString(params)}`).then((r) => json<TestCaseReportSummary>(r)),
+  reportExportUrl: (params: ReportSearchParams) => `${BASE}/reports/test-cases/export?${reportQueryString(params)}`,
 };
