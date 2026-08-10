@@ -1,0 +1,44 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+#
+# Deploys the whole app (Fastify API + built dashboard, served from one
+# process) as a single Docker web service. In the Render dashboard:
+# New -> Blueprint -> pick this repo -> Render reads this file -> fill in
+# the "sync: false" secrets it prompts for -> Apply.
+services:
+  - type: web
+    name: apptesting-agent
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: starter # Chromium is memory-hungry; the free plan (512MB, spins down on
+      # idle) can OOM or kill an in-flight browser run mid-test. Try free first
+      # if you want, but starter (or higher) is the realistic minimum.
+    healthCheckPath: /api/health
+    envVars:
+      - key: PORT
+        value: "4000"
+      - key: NODE_ENV
+        value: production
+      # Supabase connection strings — Project Settings -> Database in Supabase.
+      # DATABASE_URL: pooled (port 6543, pgbouncer=true). DIRECT_URL: direct
+      # (port 5432) — Prisma needs it for migrations.
+      - key: DATABASE_URL
+        sync: false
+      - key: DIRECT_URL
+        sync: false
+      # Login stays off until you're ready — see README "Login & email
+      # verification". Flip to "true" and fill in SMTP_* below when ready.
+      - key: AUTH_ENABLED
+        value: "false"
+      - key: AUTH_SECRET
+        generateValue: true
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_FROM
+        sync: false

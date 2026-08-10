@@ -1,4 +1,5 @@
 import path from "node:path";
+import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import Fastify from "fastify";
 import fastifyStatic from "@fastify/static";
@@ -47,6 +48,21 @@ await app.register(authRoutes);
 
 app.get("/api/health", async () => ({ ok: true }));
 
+// In production the built dashboard (web/dist) is served by this same
+// process — there's no separate frontend host, so login cookies and API
+// calls stay same-origin. In dev the web workspace runs its own Vite
+// server (proxying /api here instead), so this block only activates when
+// web/dist actually exists.
+const WEB_DIST_DIR = path.join(__dirname, "..", "..", "web", "dist");
+if (fs.existsSync(WEB_DIST_DIR)) {
+  await app.register(fastifyStatic, { root: WEB_DIST_DIR, prefix: "/", decorateReply: false });
+  app.setNotFoundHandler((req, reply) => {
+    if (req.raw.url?.startsWith("/api/") || req.raw.url?.startsWith("/screenshots/") || req.raw.url?.startsWith("/reports/")) {
+      return reply.code(404).send({ error: "not found" });
+    }
+    return reply.sendFile("index.html", WEB_DIST_DIR);
+  });
+}
 const port = Number(process.env.PORT ?? 4000);
 app.listen({ port, host: "0.0.0.0" }).catch((err) => {
   app.log.error(err);
