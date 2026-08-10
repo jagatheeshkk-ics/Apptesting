@@ -22,7 +22,7 @@ export default function TestRunDetail() {
 
   if (!run) return <p>Loading…</p>;
 
-  const byCategory: Record<string, typeof run.testCases> = { smoke: [], boundary: [], vulnerability: [] };
+  const byCategory: Record<string, typeof run.testCases> = { smoke: [], boundary: [], vulnerability: [], stress: [] };
   for (const tc of run.testCases) byCategory[tc.category]?.push(tc);
 
   return (
@@ -84,6 +84,40 @@ export default function TestRunDetail() {
           </div>
         ) : null,
       )}
+
+      {byCategory.stress.length ? (
+        <div className="card">
+          <h3>Stress tests ({byCategory.stress.length})</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Case</th>
+                <th>Status</th>
+                <th>Concurrency</th>
+                <th>Requests</th>
+                <th>Error rate</th>
+                <th>Avg latency</th>
+                <th>P95 latency</th>
+              </tr>
+            </thead>
+            <tbody>
+              {byCategory.stress.map((tc) => (
+                <tr key={tc.id}>
+                  <td>{tc.name}</td>
+                  <td>{tc.result ? <span className={`badge ${tc.result.status}`}>{tc.result.status}</span> : "—"}</td>
+                  <td>{tc.stressMetric?.concurrency ?? "—"}</td>
+                  <td>{tc.stressMetric?.totalRequests ?? "—"}</td>
+                  <td>
+                    {tc.stressMetric ? `${tc.stressMetric.errorRatePct}% (${tc.stressMetric.errorCount})` : "—"}
+                  </td>
+                  <td>{tc.stressMetric ? `${tc.stressMetric.avgLatencyMs}ms` : "—"}</td>
+                  <td>{tc.stressMetric ? `${tc.stressMetric.p95LatencyMs}ms` : "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
     </div>
   );
 }

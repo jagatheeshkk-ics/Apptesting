@@ -5,7 +5,9 @@ import { crawlAndIdentifyModules } from "./crawler.js";
 import { generateSmokeTests } from "./testGenerators/smoke.js";
 import { generateBoundaryTests } from "./testGenerators/boundary.js";
 import { generateVulnerabilityTests } from "./testGenerators/vulnerability.js";
+import { generateStressTests } from "./testGenerators/stress.js";
 import { executeBoundaryCase, executeSmokeCase, executeVulnerabilityCase } from "./executor.js";
+import { executeStressCase } from "./stressExecutor.js";
 import { buildHtmlReport } from "../report/reportBuilder.js";
 import { DetectedModule, GeneratedTestCase } from "../types.js";
 
@@ -61,6 +63,7 @@ export async function runTestRun(testRunId: string): Promise<void> {
       ...generateSmokeTests(modules),
       ...generateBoundaryTests(modules),
       ...generateVulnerabilityTests(modules),
+      ...generateStressTests(modules),
     ];
 
     await prisma.testRun.update({
@@ -90,13 +93,31 @@ export async function runTestRun(testRunId: string): Promise<void> {
       });
 
       let result;
+      let stressMetrics: Awaited<ReturnType<typeof executeStressCase>>["metrics"] | undefined;
       try {
         if (tc.category === "smoke") {
           result = await executeSmokeCase(page, tc, module, SCREENSHOT_DIR);
         } else if (tc.category === "boundary") {
           result = await executeBoundaryCase(page, tc, module, SCREENSHOT_DIR);
-        } else {
+        } else if (tc.category === "vulnerability") {
           result = await executeVulnerabilityCase(page, tc, module, SCREENSHOT_DIR);
+        } else {
+          const stress = await executeStressCase(tc.name, module, (o) => {
+            prisma.usageEvent
+              .create({
+                data: {
+                  testRunId,
+                  url: module.url,
+                  method: "STRESS",
+                  statusCode: o.status || undefined,
+                  responseMs: o.ms,
+                  consoleError: o.error,
+                },
+              })
+              .catch(() => {});
+          });
+          result = stress.result;
+          stressMetrics = stress.metrics;
         }
       } catch (err) {
         result = { status: "error" as const, actual: `Unhandled error: ${(err as Error).message}`, durationMs: 0 };
@@ -116,6 +137,20 @@ export async function runTestRun(testRunId: string): Promise<void> {
           durationMs: result.durationMs,
         },
       });
+
+      if (stressMetrics) {
+        await prisma.stressMetric.create({
+          data: {
+            testCaseId: caseRecord.id,
+            concurrency: stressMetrics.concurrency,
+            totalRequests: stressMetrics.totalRequests,
+            errorCount: stressMetrics.errorCount,
+            errorRatePct: stressMetrics.errorRatePct,
+            avgLatencyMs: stressMetrics.avgLatencyMs,
+            p95LatencyMs: stressMetrics.p95LatencyMs,
+          },
+        });
+      }
 
       await prisma.testRun.update({
         where: { id: testRunId },

@@ -15,7 +15,7 @@ const SQL_ERROR_PATTERNS = [
 
 const XSS_PATTERNS = [/<script>alert\(1\)<\/script>/, /<svg\/onload=alert\(1\)>/, /<img src=x onerror=alert\(1\)>/];
 
-function defaultValueFor(field: DetectedField): string {
+export function defaultValueFor(field: DetectedField): string {
   switch (field.type) {
     case "email":
       return "test.user@example.com";

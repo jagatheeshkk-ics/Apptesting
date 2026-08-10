@@ -65,12 +65,13 @@ model TestCase {
   testRun     TestRun @relation(fields: [testRunId], references: [id], onDelete: Cascade)
   moduleId    String?
   module      Module? @relation(fields: [moduleId], references: [id])
-  category    String // smoke | boundary | vulnerability
+  category    String // smoke | boundary | vulnerability | stress
   name        String
   description String
   inputJson   String? // JSON-encoded input(s) used for this case
 
-  result TestResult?
+  result       TestResult?
+  stressMetric StressMetric?
 }
 
 model TestResult {
@@ -83,6 +84,21 @@ model TestResult {
   screenshotPath String?
   durationMs  Int
   createdAt   DateTime @default(now())
+}
+
+// Concurrent-load metrics for a "stress" category TestCase — either N
+// concurrent GETs against a page or N concurrent submissions of a form.
+model StressMetric {
+  id            String   @id @default(cuid())
+  testCaseId    String   @unique
+  testCase      TestCase @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
+  concurrency   Int
+  totalRequests Int
+  errorCount    Int
+  errorRatePct  Float
+  avgLatencyMs  Int
+  p95LatencyMs  Int
+  createdAt     DateTime @default(now())
 }
 
 // Fine-grained usage/behavior events captured while the agent drives the

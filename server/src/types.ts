@@ -35,7 +35,7 @@ export interface DetectedModule {
 }
 
 export interface GeneratedTestCase {
-  category: "smoke" | "boundary" | "vulnerability";
+  category: "smoke" | "boundary" | "vulnerability" | "stress";
   name: string;
   description: string;
   moduleName: string;

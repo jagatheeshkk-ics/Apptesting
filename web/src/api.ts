@@ -34,13 +34,23 @@ export interface TestResult {
   durationMs: number;
 }
 
+export interface StressMetric {
+  concurrency: number;
+  totalRequests: number;
+  errorCount: number;
+  errorRatePct: number;
+  avgLatencyMs: number;
+  p95LatencyMs: number;
+}
+
 export interface TestCase {
   id: string;
-  category: "smoke" | "boundary" | "vulnerability";
+  category: "smoke" | "boundary" | "vulnerability" | "stress";
   name: string;
   description: string;
   inputJson: string | null;
   result: TestResult | null;
+  stressMetric?: StressMetric | null;
 }
 
 export interface TestRunDetail extends TestRun {
@@ -57,6 +67,8 @@ export interface AccountKpi {
   vulnerabilitiesFound: number;
   avgResponseMs: number | null;
   errorEventCount: number;
+  avgStressErrorRatePct: number | null;
+  avgStressP95LatencyMs: number | null;
   lastRunAt: string | null;
 }
 
@@ -67,6 +79,9 @@ export interface AgentPerformanceKpi {
   avgRunDurationMs: number | null;
   totalVulnerabilitiesFound: number;
   vulnerabilitiesBySeverity: Record<string, number>;
+  totalStressTests: number;
+  avgStressErrorRatePct: number | null;
+  avgStressP95LatencyMs: number | null;
   runsOverTime: { date: string; runs: number; vulnerabilities: number }[];
 }
 

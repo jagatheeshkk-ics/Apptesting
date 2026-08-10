@@ -16,14 +16,15 @@ export async function buildHtmlReport(testRunId: string, reportDir: string, scre
     where: { id: testRunId },
     include: {
       account: true,
-      testCases: { include: { result: true, module: true } },
+      testCases: { include: { result: true, module: true, stressMetric: true } },
     },
   });
 
-  const byCategory: Record<string, typeof run.testCases> = { smoke: [], boundary: [], vulnerability: [] };
+  const byCategory: Record<string, typeof run.testCases> = { smoke: [], boundary: [], vulnerability: [], stress: [] };
   for (const tc of run.testCases) byCategory[tc.category]?.push(tc);
 
   const vulnFindings = byCategory.vulnerability.filter((tc) => tc.result?.status === "fail");
+  const stressFindings = byCategory.stress.filter((tc) => tc.result?.status === "fail");
 
   const sectionHtml = (title: string, cases: typeof run.testCases) => {
     if (!cases.length) return "";
@@ -47,6 +48,31 @@ export async function buildHtmlReport(testRunId: string, reportDir: string, scre
       <h2>${title} (${cases.length})</h2>
       <table>
         <thead><tr><th>Test case</th><th>Status</th><th>Severity</th><th>Observed behavior</th><th>Duration</th><th>Screenshot</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  };
+
+  const stressSectionHtml = (cases: typeof run.testCases) => {
+    if (!cases.length) return "";
+    const rows = cases
+      .map((tc) => {
+        const r = tc.result;
+        const m = tc.stressMetric;
+        return `<tr>
+          <td>${escapeHtml(tc.name)}</td>
+          <td>${r ? statusBadge(r.status) : "—"}</td>
+          <td>${m?.concurrency ?? "—"}</td>
+          <td>${m?.totalRequests ?? "—"}</td>
+          <td>${m ? `${m.errorRatePct}% (${m.errorCount})` : "—"}</td>
+          <td>${m ? `${m.avgLatencyMs}ms` : "—"}</td>
+          <td>${m ? `${m.p95LatencyMs}ms` : "—"}</td>
+        </tr>`;
+      })
+      .join("\n");
+    return `
+      <h2>Stress tests (${cases.length})</h2>
+      <table>
+        <thead><tr><th>Test case</th><th>Status</th><th>Concurrency</th><th>Requests</th><th>Error rate</th><th>Avg latency</th><th>P95 latency</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>`;
   };
@@ -85,6 +111,7 @@ export async function buildHtmlReport(testRunId: string, reportDir: string, scre
     <div class="stat"><div class="n" style="color:#cf222e">${run.failedCases}</div><div class="l">Failed</div></div>
     <div class="stat"><div class="n" style="color:#9a6700">${run.errorCases}</div><div class="l">Errors</div></div>
     <div class="stat"><div class="n">${vulnFindings.length}</div><div class="l">Vulnerability findings</div></div>
+    <div class="stat"><div class="n">${stressFindings.length}</div><div class="l">Stress findings</div></div>
   </div>
 
   ${
@@ -92,10 +119,16 @@ export async function buildHtmlReport(testRunId: string, reportDir: string, scre
       ? `<div class="findings"><strong>⚠ ${vulnFindings.length} potential vulnerability finding(s) require review.</strong></div>`
       : ""
   }
+  ${
+    stressFindings.length
+      ? `<div class="findings"><strong>⚠ ${stressFindings.length} module(s) showed elevated error rate or latency under concurrent load.</strong></div>`
+      : ""
+  }
 
   ${sectionHtml("Smoke tests", byCategory.smoke)}
   ${sectionHtml("Boundary value tests", byCategory.boundary)}
   ${sectionHtml("Vulnerability tests", byCategory.vulnerability)}
+  ${stressSectionHtml(byCategory.stress)}
 </body>
 </html>`;
 

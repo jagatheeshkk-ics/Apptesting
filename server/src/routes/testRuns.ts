@@ -16,7 +16,7 @@ export async function testRunRoutes(app: FastifyInstance) {
       where: { id },
       include: {
         account: true,
-        testCases: { include: { result: true, module: true } },
+        testCases: { include: { result: true, module: true, stressMetric: true } },
         modules: true,
       },
     });
