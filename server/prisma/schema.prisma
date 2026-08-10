@@ -1,0 +1,239 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+// Supabase project's Postgres database. DATABASE_URL should be the pooled
+// ("Transaction" mode / port 6543) connection string for the app at runtime;
+// DIRECT_URL should be the direct ("Session" mode / port 5432) connection,
+// which Prisma needs for migrations since PgBouncer pooling doesn't support
+// the prepared statements `prisma migrate` relies on. Both are on Supabase's
+// Project Settings -> Database page.
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// A dashboard user directory (distinct from Account, which stores login
+// credentials the agent uses against a TARGET application). Passwords are
+// hashed (scrypt) and never returned by the API.
+//
+// Login is gated by the AUTH_ENABLED env var (off by default). When on,
+// login is validated by email + password. A user's first successful
+// password check doesn't log them in yet — it issues a one-time
+// verification code to their email (proving they own the mailbox); once
+// verified, every later login is just email + password.
+model User {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  displayName  String?
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  emailVerifiedAt           DateTime?
+  verificationCodeHash      String?
+  verificationCodeExpiresAt DateTime?
+  verificationAttempts      Int       @default(0)
+}
+
+// The top-level "project master" — an application/product under test.
+// Test cases across all of a project's test runs are consolidated under it
+// for dashboard reporting, broken down by the project's defined modules.
+model Project {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+
+  modules   ProjectModule[]
+  accounts  Account[]
+  testRuns  TestRun[]
+  testFlows TestFlow[]
+}
+
+// A named module within a project's master module list (e.g. "Login",
+// "Checkout", "Reporting"). Reference data for organizing/reporting on a
+// project — not directly tied to the pages the crawler discovers per run.
+model ProjectModule {
+  id          String   @id @default(cuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+
+  @@unique([projectId, name])
+}
+
+// A login account the agent can use against a target application.
+// NOTE: credentials are stored in plaintext for this MVP because the agent
+// needs to actively re-type them into login forms during a run. Do not seed
+// this table with real production credentials — use dedicated test accounts.
+model Account {
+  id        String   @id @default(cuid())
+  label     String
+  targetUrl String
+  username  String
+  password  String
+  role      String? // e.g. "admin", "standard-user", "read-only"
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+
+  testRuns  TestRun[]
+  testFlows TestFlow[]
+}
+
+model TestRun {
+  id          String    @id @default(cuid())
+  targetUrl   String
+  accountId   String?
+  account     Account?  @relation(fields: [accountId], references: [id])
+  projectId   String?
+  project     Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  mode        String    @default("full") // full | quick (sanity check)
+  status      String    @default("pending") // pending | crawling | generating | executing | completed | failed
+  error       String?
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+  reportPath  String?
+  regressionsJson String? // JSON-encoded diff vs the previous run for this target (regressed/fixed case names)
+
+  // rollup counters, updated as the run progresses
+  totalCases  Int @default(0)
+  passedCases Int @default(0)
+  failedCases Int @default(0)
+  errorCases  Int @default(0)
+
+  modules    Module[]
+  testCases  TestCase[]
+  usageEvents UsageEvent[]
+}
+
+// A discovered page/form/element cluster on the target application.
+model Module {
+  id         String  @id @default(cuid())
+  testRunId  String
+  testRun    TestRun @relation(fields: [testRunId], references: [id], onDelete: Cascade)
+  name       String
+  url        String
+  type       String // page | form | nav
+  fieldsJson String // JSON-encoded array of detected input fields (name, type, attrs)
+
+  testCases TestCase[]
+}
+
+model TestCase {
+  id          String  @id @default(cuid())
+  testRunId   String
+  testRun     TestRun @relation(fields: [testRunId], references: [id], onDelete: Cascade)
+  moduleId    String?
+  module      Module? @relation(fields: [moduleId], references: [id])
+  testFlowId  String?
+  testFlow    TestFlow? @relation(fields: [testFlowId], references: [id])
+  category    String // smoke | boundary | vulnerability | stress | performance | compatibility | accessibility | flow
+  name        String
+  description String
+  inputJson   String? // JSON-encoded input(s) used for this case
+
+  result            TestResult?
+  stressMetric      StressMetric?
+  performanceMetric PerformanceMetric?
+  flowStepResults   FlowStepResult[]
+}
+
+model TestResult {
+  id          String   @id @default(cuid())
+  testCaseId  String   @unique
+  testCase    TestCase @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
+  status      String // pass | fail | error
+  severity    String? // info | low | medium | high | critical (mainly for vulnerability cases)
+  actual      String // observed behavior / evidence
+  screenshotPath String?
+  durationMs  Int
+  createdAt   DateTime @default(now())
+}
+
+// Concurrent-load metrics for a "stress" category TestCase — either N
+// concurrent GETs against a page or N concurrent submissions of a form.
+model StressMetric {
+  id            String   @id @default(cuid())
+  testCaseId    String   @unique
+  testCase      TestCase @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
+  concurrency   Int
+  totalRequests Int
+  errorCount    Int
+  errorRatePct  Float
+  avgLatencyMs  Int
+  p95LatencyMs  Int
+  createdAt     DateTime @default(now())
+}
+
+// Navigation-timing / page-weight metrics for a "performance" category TestCase.
+model PerformanceMetric {
+  id                   String   @id @default(cuid())
+  testCaseId           String   @unique
+  testCase             TestCase @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
+  domContentLoadedMs   Int
+  loadEventMs          Int
+  resourceCount        Int
+  transferSizeKb       Int
+  createdAt            DateTime @default(now())
+}
+
+// A user-authored, reusable multi-step journey (e.g. login -> add to cart ->
+// checkout -> expect confirmation), used to cover integration/system/
+// functional/UAT-style testing that can't be inferred from crawling alone.
+model TestFlow {
+  id        String   @id @default(cuid())
+  label     String
+  targetUrl String
+  accountId String?
+  account   Account? @relation(fields: [accountId], references: [id])
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+
+  steps     FlowStep[]
+  testCases TestCase[]
+}
+
+model FlowStep {
+  id         String   @id @default(cuid())
+  testFlowId String
+  testFlow   TestFlow @relation(fields: [testFlowId], references: [id], onDelete: Cascade)
+  order      Int
+  action     String // navigate | fill | click | expectUrlContains | expectTextContains | expectElementVisible
+  selector   String?
+  value      String?
+}
+
+model FlowStepResult {
+  id             String   @id @default(cuid())
+  testCaseId     String
+  testCase       TestCase @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
+  order          Int
+  action         String
+  status         String // pass | fail | error
+  detail         String
+  screenshotPath String?
+  durationMs     Int
+  createdAt      DateTime @default(now())
+}
+
+// Fine-grained usage/behavior events captured while the agent drives the
+// target app, used to compute application usage KPIs (response times, errors).
+model UsageEvent {
+  id           String   @id @default(cuid())
+  testRunId    String
+  testRun      TestRun  @relation(fields: [testRunId], references: [id], onDelete: Cascade)
+  url          String
+  method       String   @default("GET")
+  statusCode   Int?
+  responseMs   Int?
+  consoleError String?
+  createdAt    DateTime @default(now())
+}
