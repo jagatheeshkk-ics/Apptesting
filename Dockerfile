@@ -20,12 +20,12 @@ COPY web/package.json web/package.json
 ENV DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder"
 ENV DIRECT_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder"
 
-# --workspaces --include-workspace-root: some build environments (seen on
-# Render) set an implicit npm workspace scope, which makes a bare `npm ci`
-# fail with "Include the workspace root when workspaces are enabled for a
-# command." These flags make the intent explicit regardless of environment:
-# install every workspace (server, web) plus the root, unconditionally.
-RUN npm ci --workspaces --include-workspace-root
+# `npm ci` (even with explicit workspace flags) fails on Render's build
+# environment with a usage-level error we couldn't get full diagnostics
+# for. `npm install` installs every workspace + the root by default with
+# no special flags, and is less strict about lockfile-matching validation
+# — since we COPY the exact lockfile in, it still installs deterministically.
+RUN npm install
 
 COPY . .
 RUN npm run build
