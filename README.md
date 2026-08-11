@@ -7,8 +7,8 @@ a login account), and the agent will:
    crawls the application, identifies its modules (pages, forms, fields), and
    drafts a starting set of plain-language user stories for each module —
    shown right under the URL field for you to edit, remove, or add to before
-   starting the run. Story drafting uses the Claude API when `ANTHROPIC_API_KEY`
-   is set, falling back to simple templates otherwise (still fully editable
+   starting the run. Story drafting uses the free Gemini API when
+   `GEMINI_API_KEY` is set, falling back to simple templates otherwise (still fully editable
    either way). Stories are documentation/traceability attached to each
    module (shown on the run's detail page too) — they don't get parsed for
    test steps. What actually drives test generation is the crawled
@@ -157,9 +157,9 @@ not on the page that owns that data. Mutations on those same resources
 
 ### AI-generated user stories
 
-Set `ANTHROPIC_API_KEY` (an API key from [console.anthropic.com](https://console.anthropic.com))
-to have the New Test Run page's user-story drafts written by Claude
-(`claude-haiku-4-5-20251001`) instead of the built-in templates. Without a
+Set `GEMINI_API_KEY` (a free API key from [Google AI Studio](https://aistudio.google.com/apikey))
+to have the New Test Run page's user-story drafts written by Gemini
+(`gemini-2.5-flash`) instead of the built-in templates. Without a
 key, story drafting still works — it just uses the simpler templates in
 `server/src/agent/userStoryGenerator.ts`. Either way, stories are fully
 editable before you start a run, and the AI call has a 15s timeout with no

@@ -1,12 +1,12 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { GoogleGenAI } from "@google/genai";
 import { DetectedModule } from "../types.js";
 
-let client: Anthropic | null | undefined;
+let client: GoogleGenAI | null | undefined;
 
-function getClient(): Anthropic | null {
+function getClient(): GoogleGenAI | null {
   if (client !== undefined) return client;
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  client = apiKey ? new Anthropic({ apiKey, timeout: 15_000, maxRetries: 1 }) : null;
+  const apiKey = process.env.GEMINI_API_KEY;
+  client = apiKey ? new GoogleGenAI({ apiKey }) : null;
   return client;
 }
 
@@ -26,8 +26,8 @@ function extractJsonArray(text: string): string[] | null {
 // call/parse fails for any reason — callers fall back to the heuristic
 // generator so a flaky/unconfigured AI never blocks a run.
 export async function generateAIUserStories(module: DetectedModule): Promise<string[] | null> {
-  const anthropic = getClient();
-  if (!anthropic) return null;
+  const genAI = getClient();
+  if (!genAI) return null;
 
   const fieldSummary = module.fields
     .map((f) => `- ${f.label || f.name} (${f.type}${f.required ? ", required" : ""})`)
@@ -44,13 +44,12 @@ ${fieldSummary || "(none)"}
 Write 2-4 concise user stories in "As a user, I want to ... so that ..." format, covering the module's likely purpose and any validation behavior implied by its required/typed fields. Respond with ONLY a JSON array of strings — no markdown, no explanation, no code fences.`;
 
   try {
-    const response = await anthropic.messages.create({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 512,
-      messages: [{ role: "user", content: prompt }],
+    const response = await genAI.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: prompt,
+      config: { httpOptions: { timeout: 15_000 } },
     });
-    const text = response.content.map((b) => (b.type === "text" ? b.text : "")).join("");
-    return extractJsonArray(text);
+    return extractJsonArray(response.text ?? "");
   } catch {
     return null;
   }

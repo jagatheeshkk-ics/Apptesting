@@ -2,7 +2,7 @@ import { DetectedModule } from "../types.js";
 import { generateAIUserStories } from "./aiUserStoryGenerator.js";
 
 // Heuristic, template-based generation from the crawled module's shape (type,
-// field names/types) — no LLM involved. Used directly when ANTHROPIC_API_KEY
+// field names/types) — no LLM involved. Used directly when GEMINI_API_KEY
 // isn't configured, and as a fallback if the AI call fails for any reason.
 function inferFormPurpose(module: DetectedModule): string {
   const fieldTypes = new Set(module.fields.map((f) => f.type));
@@ -48,7 +48,7 @@ export function generateHeuristicUserStories(module: DetectedModule): string[] {
   return stories;
 }
 
-// Tries the AI generator first (if ANTHROPIC_API_KEY is configured); falls
+// Tries the AI generator first (if GEMINI_API_KEY is configured); falls
 // back to the heuristic templates on any failure or when it's not
 // configured, so this never blocks a run.
 export async function generateUserStories(module: DetectedModule): Promise<string[]> {

@@ -14,10 +14,10 @@
     "create-admin": "tsx scripts/create-admin.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.116.0",
     "@fastify/cookie": "^9.4.0",
     "@fastify/cors": "^9.0.1",
     "@fastify/static": "^7.0.4",
+    "@google/genai": "^2.16.0",
     "@prisma/client": "^5.19.1",
     "fastify": "^4.28.1",
     "nodemailer": "^9.0.5",
