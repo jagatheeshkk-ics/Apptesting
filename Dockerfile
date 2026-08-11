@@ -20,7 +20,12 @@ COPY web/package.json web/package.json
 ENV DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder"
 ENV DIRECT_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder"
 
-RUN npm ci
+# --workspaces --include-workspace-root: some build environments (seen on
+# Render) set an implicit npm workspace scope, which makes a bare `npm ci`
+# fail with "Include the workspace root when workspaces are enabled for a
+# command." These flags make the intent explicit regardless of environment:
+# install every workspace (server, web) plus the root, unconditionally.
+RUN npm ci --workspaces --include-workspace-root
 
 COPY . .
 RUN npm run build
