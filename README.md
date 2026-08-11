@@ -3,9 +3,17 @@
 An AI-agent-driven application testing platform. Give it a URL (and, optionally,
 a login account), and the agent will:
 
-1. **Crawl the target application** and identify modules — pages, forms, and
-   input fields (with their type/length/range constraints).
-2. **Generate and execute test cases** across the testing pyramid:
+1. **Analyze the URL** — as soon as you enter one and move on, the agent
+   crawls the application, identifies its modules (pages, forms, fields), and
+   drafts a starting set of plain-language user stories for each module
+   (heuristic/template-based, not an LLM) — shown right under the URL field
+   for you to edit, remove, or add to before starting the run. Stories are
+   documentation/traceability attached to each module (shown on the run's
+   detail page too) — they don't get parsed for test steps. What actually
+   drives test generation is the crawled fields/forms/buttons for each
+   module, filtered down to whichever test-type checkboxes you selected.
+2. **Generate and execute test cases** across the testing pyramid — which
+   categories run is your choice, via checkboxes (default: all of them):
    - **Smoke** — pages load, forms render with all expected fields.
    - **Boundary value / negative** — empty/whitespace, min/max length, min/max
      numeric range, overflow, unicode, special characters, per detected field.
@@ -72,9 +80,15 @@ web/      React + Vite dashboard
   URL, username/password, role). **Use dedicated test/QA credentials only** —
   passwords are stored so the agent can resubmit them into login forms.
 - `TestRun` — one agent run against a target URL, optionally as a given
-  account, in `full` or `quick` (sanity) mode. Carries a `regressionsJson`
-  diff against the previous run for the same target.
-- `Module` — a page or form discovered during the crawl.
+  account, in `full` or `quick` (sanity) mode. `enabledCategoriesJson` records
+  which test-type checkboxes were selected on the New Test Run page (`null`
+  means all categories — the default). Carries a `regressionsJson` diff
+  against the previous run for the same target.
+- `Module` — a page or form discovered during the crawl. `userStoriesJson`
+  holds its editable, plain-language user stories — auto-drafted when you
+  analyze a URL on the New Test Run page, then whatever you edited them to
+  before starting the run (or freshly auto-drafted at run time if you skipped
+  the analyze step for that module).
 - `TestCase` / `TestResult` — a generated case and its executed outcome
   (pass/fail/error, severity, screenshot, duration).
 - `StressMetric` / `PerformanceMetric` — concurrency/latency and page-weight

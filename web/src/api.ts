@@ -133,6 +133,47 @@ export type TestCategory =
   | "accessibility"
   | "flow";
 
+export const TEST_CATEGORY_LABELS: Record<TestCategory, string> = {
+  smoke: "Smoke",
+  boundary: "Boundary value",
+  vulnerability: "Vulnerability (security)",
+  stress: "Stress / load",
+  performance: "Performance",
+  compatibility: "Compatibility (viewport)",
+  accessibility: "Accessibility",
+  flow: "Flows (integration/UAT)",
+};
+
+export const ALL_TEST_CATEGORIES = Object.keys(TEST_CATEGORY_LABELS) as TestCategory[];
+
+export interface DetectedField {
+  name: string;
+  label?: string;
+  type: string;
+  required: boolean;
+  maxLength?: number;
+  minLength?: number;
+  min?: number;
+  max?: number;
+  options?: string[];
+}
+
+export interface AnalyzedModule {
+  name: string;
+  url: string;
+  type: "page" | "form" | "nav";
+  fields: DetectedField[];
+  userStories: string[];
+}
+
+export interface RunModule {
+  id: string;
+  name: string;
+  url: string;
+  type: string;
+  userStories: string[];
+}
+
 export interface TestCase {
   id: string;
   category: TestCategory;
@@ -161,6 +202,8 @@ export interface RegressionSummary {
 export interface TestRunDetail extends TestRun {
   testCases: TestCase[];
   regressions: RegressionSummary | null;
+  modules: RunModule[];
+  enabledCategories: TestCategory[] | null;
 }
 
 export interface AccountKpi {
@@ -323,12 +366,26 @@ export const api = {
 
   listTestRuns: () => fetch(`${BASE}/test-runs`).then((r) => json<TestRun[]>(r)),
   getTestRun: (id: string) => fetch(`${BASE}/test-runs/${id}`).then((r) => json<TestRunDetail>(r)),
-  createTestRun: (data: { targetUrl: string; accountId?: string; projectId?: string; mode?: "full" | "quick" }) =>
+  createTestRun: (data: {
+    targetUrl: string;
+    accountId?: string;
+    projectId?: string;
+    mode?: "full" | "quick";
+    enabledCategories?: TestCategory[];
+    moduleStories?: Record<string, string[]>;
+  }) =>
     fetch(`${BASE}/test-runs`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     }).then((r) => json<TestRun>(r)),
+
+  analyzeUrl: (data: { targetUrl: string; accountId?: string }) =>
+    fetch(`${BASE}/analyze`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    }).then((r) => json<{ modules: AnalyzedModule[] }>(r)),
 
   accountKpis: () => fetch(`${BASE}/kpi/accounts`).then((r) => json<AccountKpi[]>(r)),
   agentKpi: () => fetch(`${BASE}/kpi/agent`).then((r) => json<AgentPerformanceKpi>(r)),

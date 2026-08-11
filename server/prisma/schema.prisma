@@ -115,13 +115,14 @@ model TestRun {
   account     Account?  @relation(fields: [accountId], references: [id])
   projectId   String?
   project     Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  mode        String    @default("full") // full | quick (sanity check)
+  mode        String    @default("full") // full | quick (only re-run cases that failed last time, plus smoke)
   status      String    @default("pending") // pending | crawling | generating | executing | completed | failed
   error       String?
   startedAt   DateTime  @default(now())
   completedAt DateTime?
   reportPath  String?
   regressionsJson String? // JSON-encoded diff vs the previous run for this target (regressed/fixed case names)
+  enabledCategoriesJson String? // JSON-encoded array of TestCategory keys the user selected via checkboxes; null = all categories
 
   // rollup counters, updated as the run progresses
   totalCases  Int @default(0)
@@ -143,6 +144,7 @@ model Module {
   url        String
   type       String // page | form | nav
   fieldsJson String // JSON-encoded array of detected input fields (name, type, attrs)
+  userStoriesJson String? // JSON-encoded array of editable user-story strings, auto-generated then user-editable
 
   testCases TestCase[]
 }

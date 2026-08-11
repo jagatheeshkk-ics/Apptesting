@@ -23,6 +23,7 @@ interface RouteRule {
 // screen — including mutations on those same resources — is gated.
 const ROUTE_RULES: RouteRule[] = [
   { method: "POST", prefix: "/api/test-runs", page: "new-test-run" },
+  { method: "POST", prefix: "/api/analyze", page: "new-test-run" },
   { method: "GET", prefix: "/api/test-runs", page: "test-runs" },
   { method: "*", prefix: "/api/kpi/projects", page: "projects" },
   { method: "POST", prefix: "/api/projects", page: "projects" },
