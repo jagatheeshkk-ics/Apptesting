@@ -42,3 +42,9 @@ services:
         sync: false
       - key: SMTP_FROM
         sync: false
+      # Optional — powers AI-drafted user stories on the New Test Run page
+      # (Claude API, console.anthropic.com). Without it, stories still get
+      # drafted, just from simpler templates — see README "AI-generated
+      # user stories".
+      - key: ANTHROPIC_API_KEY
+        sync: false

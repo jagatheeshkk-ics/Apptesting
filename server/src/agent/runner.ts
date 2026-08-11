@@ -98,22 +98,23 @@ export async function runTestRun(
     });
 
     const moduleRecords = await Promise.all(
-      modules.map((m) =>
-        prisma.module.create({
+      modules.map(async (m) => {
+        // Prefer stories the user reviewed/edited on the New Test Run page
+        // (matched by module name); fall back to freshly generated ones for
+        // any module that wasn't part of that preview (e.g. the preview
+        // used a shallower crawl, or the user skipped it).
+        const stories = opts?.moduleStories?.[m.name] ?? (await generateUserStories(m));
+        return prisma.module.create({
           data: {
             testRunId,
             name: m.name,
             url: m.url,
             type: m.type,
             fieldsJson: JSON.stringify(m.fields),
-            // Prefer stories the user reviewed/edited on the New Test Run page
-            // (matched by module name); fall back to freshly generated ones
-            // for any module that wasn't part of that preview (e.g. the
-            // preview used a shallower crawl, or the user skipped it).
-            userStoriesJson: JSON.stringify(opts?.moduleStories?.[m.name] ?? generateUserStories(m)),
+            userStoriesJson: JSON.stringify(stories),
           },
-        }),
-      ),
+        });
+      }),
     );
     const moduleByName = new Map<string, DetectedModule>(modules.map((m) => [m.name, m]));
     const moduleRecordByName = new Map(moduleRecords.map((m) => [m.name, m]));
