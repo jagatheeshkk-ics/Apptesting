@@ -15,16 +15,22 @@ import { executePerformanceCase } from "./performanceExecutor.js";
 import { executeCompatibilityCase } from "./compatibilityExecutor.js";
 import { executeAccessibilityCase } from "./accessibilityExecutor.js";
 import { executeFlow } from "./flowExecutor.js";
+import { generateUserStories } from "./userStoryGenerator.js";
 import { computeRegressions } from "../analysis/regression.js";
 import { buildHtmlReport } from "../report/reportBuilder.js";
-import { DetectedModule, GeneratedTestCase } from "../types.js";
+import { DetectedModule, GeneratedTestCase, TestCategory } from "../types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const SCREENSHOT_DIR = path.join(__dirname, "..", "..", "storage", "screenshots");
 export const REPORT_DIR = path.join(__dirname, "..", "..", "storage", "reports");
 
-async function buildGeneratedCases(modules: DetectedModule[], mode: string, run: { targetUrl: string; accountId: string | null; id: string }): Promise<GeneratedTestCase[]> {
-  const full: GeneratedTestCase[] = [
+async function buildGeneratedCases(
+  modules: DetectedModule[],
+  mode: string,
+  enabledCategories: TestCategory[] | null,
+  run: { targetUrl: string; accountId: string | null; id: string },
+): Promise<GeneratedTestCase[]> {
+  const allGenerated: GeneratedTestCase[] = [
     ...generateSmokeTests(modules),
     ...generateBoundaryTests(modules),
     ...generateVulnerabilityTests(modules),
@@ -33,6 +39,8 @@ async function buildGeneratedCases(modules: DetectedModule[], mode: string, run:
     ...generateCompatibilityTests(modules),
     ...generateAccessibilityTests(modules),
   ];
+
+  const full = enabledCategories ? allGenerated.filter((tc) => enabledCategories.includes(tc.category)) : allGenerated;
 
   if (mode !== "quick") return full;
 
@@ -60,7 +68,10 @@ async function buildGeneratedCases(modules: DetectedModule[], mode: string, run:
   return full.filter((tc) => tc.category === "smoke" || failedNames.has(tc.name));
 }
 
-export async function runTestRun(testRunId: string): Promise<void> {
+export async function runTestRun(
+  testRunId: string,
+  opts?: { moduleStories?: Record<string, string[]> },
+): Promise<void> {
   const run = await prisma.testRun.findUniqueOrThrow({ where: { id: testRunId }, include: { account: true } });
 
   try {
@@ -95,6 +106,11 @@ export async function runTestRun(testRunId: string): Promise<void> {
             url: m.url,
             type: m.type,
             fieldsJson: JSON.stringify(m.fields),
+            // Prefer stories the user reviewed/edited on the New Test Run page
+            // (matched by module name); fall back to freshly generated ones
+            // for any module that wasn't part of that preview (e.g. the
+            // preview used a shallower crawl, or the user skipped it).
+            userStoriesJson: JSON.stringify(opts?.moduleStories?.[m.name] ?? generateUserStories(m)),
           },
         }),
       ),
@@ -104,19 +120,24 @@ export async function runTestRun(testRunId: string): Promise<void> {
 
     await prisma.testRun.update({ where: { id: testRunId }, data: { status: "generating" } });
 
-    const generated = await buildGeneratedCases(modules, run.mode, {
+    const enabledCategories = run.enabledCategoriesJson ? (JSON.parse(run.enabledCategoriesJson) as TestCategory[]) : null;
+
+    const generated = await buildGeneratedCases(modules, run.mode, enabledCategories, {
       targetUrl: run.targetUrl,
       accountId: run.accountId,
       id: run.id,
     });
 
-    const matchingFlows = await prisma.testFlow.findMany({
-      where: {
-        targetUrl: run.targetUrl,
-        OR: [{ accountId: null }, { accountId: run.accountId }],
-      },
-      include: { steps: true },
-    });
+    const matchingFlows =
+      enabledCategories && !enabledCategories.includes("flow")
+        ? []
+        : await prisma.testFlow.findMany({
+            where: {
+              targetUrl: run.targetUrl,
+              OR: [{ accountId: null }, { accountId: run.accountId }],
+            },
+            include: { steps: true },
+          });
 
     await prisma.testRun.update({
       where: { id: testRunId },
