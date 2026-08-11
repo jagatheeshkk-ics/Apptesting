@@ -1,10 +1,44 @@
 const BASE = "/api";
 
+export type PageKey =
+  | "new-test-run"
+  | "test-runs"
+  | "projects"
+  | "accounts"
+  | "flows"
+  | "users"
+  | "roles"
+  | "reports"
+  | "kpi";
+
+export const PAGE_LABELS: Record<PageKey, string> = {
+  "new-test-run": "New test run",
+  "test-runs": "Test runs",
+  projects: "Projects",
+  accounts: "Accounts",
+  flows: "Flows",
+  users: "Users",
+  roles: "Roles",
+  reports: "Reports",
+  kpi: "KPI dashboard",
+};
+
+export interface Role {
+  id: string;
+  name: string;
+  description: string | null;
+  allowedPages: PageKey[];
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface User {
   id: string;
   username: string;
   displayName: string | null;
   email: string;
+  roleId: string | null;
+  role: Role | null;
   createdAt: string;
   updatedAt: string;
   emailVerifiedAt: string | null;
@@ -333,19 +367,37 @@ export const api = {
     fetch(`${BASE}/projects/${projectId}/modules/${moduleId}`, { method: "DELETE" }),
 
   listUsers: () => fetch(`${BASE}/users`).then((r) => json<User[]>(r)),
-  createUser: (data: { username: string; displayName?: string; email: string; password: string }) =>
+  createUser: (data: { username: string; displayName?: string; email: string; password: string; roleId?: string }) =>
     fetch(`${BASE}/users`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     }).then((r) => json<User>(r)),
-  updateUser: (id: string, data: { username?: string; displayName?: string; email?: string; password?: string }) =>
+  updateUser: (
+    id: string,
+    data: { username?: string; displayName?: string; email?: string; password?: string; roleId?: string | null },
+  ) =>
     fetch(`${BASE}/users/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     }).then((r) => json<User>(r)),
   deleteUser: (id: string) => fetch(`${BASE}/users/${id}`, { method: "DELETE" }),
+
+  listRoles: () => fetch(`${BASE}/roles`).then((r) => json<Role[]>(r)),
+  createRole: (data: { name: string; description?: string; allowedPages: PageKey[] }) =>
+    fetch(`${BASE}/roles`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    }).then((r) => json<Role>(r)),
+  updateRole: (id: string, data: { name?: string; description?: string; allowedPages?: PageKey[] }) =>
+    fetch(`${BASE}/roles/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    }).then((r) => json<Role>(r)),
+  deleteRole: (id: string) => fetch(`${BASE}/roles/${id}`, { method: "DELETE" }),
 
   listReportModules: () => fetch(`${BASE}/reports/modules`).then((r) => json<string[]>(r)),
   searchTestCaseReport: (params: ReportSearchParams) =>
