@@ -24,12 +24,19 @@ datasource db {
 // password check doesn't log them in yet — it issues a one-time
 // verification code to their email (proving they own the mailbox); once
 // verified, every later login is just email + password.
+//
+// roleId is optional: a user with no role keeps full, unrestricted access
+// (so assigning roles is a purely additive restriction — nothing breaks for
+// existing users). Once assigned, a role limits which dashboard pages
+// (Role.allowedPagesJson) that user can see.
 model User {
   id           String   @id @default(cuid())
   username     String   @unique
   displayName  String?
   email        String   @unique
   passwordHash String
+  roleId       String?
+  role         Role?    @relation(fields: [roleId], references: [id], onDelete: SetNull)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -37,6 +44,20 @@ model User {
   verificationCodeHash      String?
   verificationCodeExpiresAt DateTime?
   verificationAttempts      Int       @default(0)
+}
+
+// A role master: a named set of dashboard pages a user may see (e.g.
+// "QA Tester" -> only Reports + Projects). Page keys are validated against
+// a fixed list in server/src/access/pages.ts, matching the app's own nav.
+model Role {
+  id               String   @id @default(cuid())
+  name             String   @unique
+  description      String?
+  allowedPagesJson String // JSON-encoded array of page keys
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  users User[]
 }
 
 // The top-level "project master" — an application/product under test.

@@ -87,7 +87,10 @@ web/      React + Vite dashboard
   `Account`. Passwords are hashed (scrypt) and never returned by the API.
   `email` is required and unique — it's the login identifier. `emailVerifiedAt`
   and the `verificationCode*` fields track the one-time email verification
-  described below.
+  described below. `roleId` optionally links to a `Role`.
+- `Role` — a role master: a named set of dashboard pages (`allowedPagesJson`)
+  a user with that role may see. A user with no role keeps full,
+  unrestricted access — assigning a role is a purely additive restriction.
 
 ## Login & email verification
 
@@ -115,6 +118,23 @@ Required when `AUTH_ENABLED=true`:
 - `SMTP_HOST` (+ `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`) — if
   unset, the verification code is logged to the server console instead of
   emailed, so you can test the flow before wiring up real SMTP.
+
+### Role-based page access
+
+On the **Roles** page, define a role as a name plus a checklist of which
+dashboard pages it can see (New test run, Test runs, Projects, Accounts,
+Flows, Users, Roles, Reports, KPI dashboard). Assign a role to a user on
+the **Users** page — a user with no role keeps full, unrestricted access,
+so this is opt-in per user, not a default lockdown.
+
+This gates the dashboard's own pages (what a logged-in user can see), not
+the QA "Project Modules" you define under a Project. Enforcement happens
+in both the nav/routes (hidden/blocked pages) and the API (`server/src/auth/gate.ts`)
+— except `GET /api/accounts` and `GET /api/projects`, which stay available
+to any authenticated user regardless of role, since several pages (New
+test run, Accounts, Flows) depend on those lists purely to populate
+dropdowns; restricting them would break those dropdowns for users
+permitted on those other pages but not on Accounts/Projects itself.
 
 ## Database (Supabase)
 

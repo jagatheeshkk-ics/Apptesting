@@ -13,6 +13,7 @@ import { userRoutes } from "./routes/users.js";
 import { projectRoutes } from "./routes/projects.js";
 import { reportRoutes } from "./routes/reports.js";
 import { authRoutes } from "./routes/auth.js";
+import { roleRoutes } from "./routes/roles.js";
 import { registerAuthGate } from "./auth/gate.js";
 import { REPORT_DIR, SCREENSHOT_DIR } from "./agent/runner.js";
 
@@ -45,6 +46,7 @@ await app.register(userRoutes);
 await app.register(projectRoutes);
 await app.register(reportRoutes);
 await app.register(authRoutes);
+await app.register(roleRoutes);
 
 app.get("/api/health", async () => ({ ok: true }));
 

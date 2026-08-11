@@ -3,15 +3,11 @@ import { prisma } from "../db.js";
 import { hashPassword, verifyPassword } from "../auth/password.js";
 import { sendVerificationEmail } from "../auth/mailer.js";
 import { SESSION_COOKIE, createSessionToken, generateVerificationCode, verifySessionToken } from "../auth/session.js";
+import { toPublicUser } from "../auth/publicUser.js";
 
 const CODE_TTL_MS = 15 * 60 * 1000;
 const RESEND_COOLDOWN_MS = 60 * 1000;
 const MAX_VERIFY_ATTEMPTS = 5;
-
-function toPublicUser<T extends { passwordHash: string; verificationCodeHash: string | null }>(user: T) {
-  const { passwordHash, verificationCodeHash, ...rest } = user;
-  return rest;
-}
 
 function isProduction() {
   return process.env.NODE_ENV === "production";
@@ -38,7 +34,7 @@ export async function authRoutes(app: FastifyInstance) {
     const userId = token ? verifySessionToken(token) : null;
     if (!userId) return reply.code(401).send({ error: "not authenticated" });
 
-    const user = await prisma.user.findUnique({ where: { id: userId } });
+    const user = await prisma.user.findUnique({ where: { id: userId }, include: { role: true } });
     if (!user) return reply.code(401).send({ error: "not authenticated" });
     return { user: toPublicUser(user) };
   });
@@ -50,7 +46,7 @@ export async function authRoutes(app: FastifyInstance) {
     }
 
     const email = body.email.trim().toLowerCase();
-    const user = await prisma.user.findUnique({ where: { email } });
+    const user = await prisma.user.findUnique({ where: { email }, include: { role: true } });
     const invalid = () => reply.code(401).send({ error: "invalid email or password" });
     if (!user) return invalid();
 
@@ -106,6 +102,7 @@ export async function authRoutes(app: FastifyInstance) {
         verificationCodeExpiresAt: null,
         verificationAttempts: 0,
       },
+      include: { role: true },
     });
 
     const token = createSessionToken(updated.id);
