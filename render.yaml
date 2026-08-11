@@ -43,8 +43,8 @@ services:
       - key: SMTP_FROM
         sync: false
       # Optional — powers AI-drafted user stories on the New Test Run page
-      # (Claude API, console.anthropic.com). Without it, stories still get
-      # drafted, just from simpler templates — see README "AI-generated
-      # user stories".
-      - key: ANTHROPIC_API_KEY
+      # (free Gemini API key from aistudio.google.com/apikey). Without it,
+      # stories still get drafted, just from simpler templates — see README
+      # "AI-generated user stories".
+      - key: GEMINI_API_KEY
         sync: false
