@@ -130,11 +130,14 @@ so this is opt-in per user, not a default lockdown.
 This gates the dashboard's own pages (what a logged-in user can see), not
 the QA "Project Modules" you define under a Project. Enforcement happens
 in both the nav/routes (hidden/blocked pages) and the API (`server/src/auth/gate.ts`)
-— except `GET /api/accounts` and `GET /api/projects`, which stay available
-to any authenticated user regardless of role, since several pages (New
-test run, Accounts, Flows) depend on those lists purely to populate
-dropdowns; restricting them would break those dropdowns for users
-permitted on those other pages but not on Accounts/Projects itself.
+— except the plain list endpoints (`GET /api/accounts`, `GET /api/projects`,
+`GET /api/roles`), which stay available to any authenticated user
+regardless of role, since several pages depend on those lists purely to
+populate dropdowns (New test run/Accounts/Flows need accounts+projects;
+Users needs roles for its role picker); restricting them would break
+those dropdowns for users permitted on the page using the dropdown but
+not on the page that owns that data. Mutations on those same resources
+(create/edit/delete) stay gated as normal.
 
 ## Database (Supabase)
 

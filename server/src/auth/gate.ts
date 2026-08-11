@@ -13,12 +13,14 @@ interface RouteRule {
 }
 
 // Maps API routes to the dashboard page they belong to, for role-based
-// gating. GET /api/accounts and GET /api/projects are deliberately left
-// out — several pages (New test run, Accounts, Flows) depend on those
-// lists purely to populate dropdowns, so restricting them by page would
-// break cross-page dropdowns for users who are permitted on those other
-// pages but not on Accounts/Projects itself. Everything else that's
-// specific to one page's own screen is gated.
+// gating. GET /api/accounts, GET /api/projects, and GET /api/roles are
+// deliberately left out — several pages depend on those lists purely to
+// populate dropdowns (New test run/Accounts/Flows need accounts+projects;
+// Users needs roles for its role picker), so restricting the plain list
+// endpoint by page would break those dropdowns for users who are
+// permitted on the page using the dropdown but not on the page that
+// "owns" that data. Everything else that's specific to one page's own
+// screen — including mutations on those same resources — is gated.
 const ROUTE_RULES: RouteRule[] = [
   { method: "POST", prefix: "/api/test-runs", page: "new-test-run" },
   { method: "GET", prefix: "/api/test-runs", page: "test-runs" },
@@ -30,7 +32,9 @@ const ROUTE_RULES: RouteRule[] = [
   { method: "DELETE", prefix: "/api/accounts", page: "accounts" },
   { method: "*", prefix: "/api/flows", page: "flows" },
   { method: "*", prefix: "/api/users", page: "users" },
-  { method: "*", prefix: "/api/roles", page: "roles" },
+  { method: "POST", prefix: "/api/roles", page: "roles" },
+  { method: "PATCH", prefix: "/api/roles", page: "roles" },
+  { method: "DELETE", prefix: "/api/roles", page: "roles" },
   { method: "*", prefix: "/api/reports", page: "reports" },
   { method: "*", prefix: "/api/kpi/accounts", page: "kpi" },
   { method: "*", prefix: "/api/kpi/agent", page: "kpi" },
