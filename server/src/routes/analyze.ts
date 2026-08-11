@@ -31,15 +31,16 @@ export async function analyzeRoutes(app: FastifyInstance) {
     }
 
     try {
-      return {
-        modules: crawl.modules.map((m) => ({
+      const modules = await Promise.all(
+        crawl.modules.map(async (m) => ({
           name: m.name,
           url: m.url,
           type: m.type,
           fields: m.fields,
-          userStories: generateUserStories(m),
+          userStories: await generateUserStories(m),
         })),
-      };
+      );
+      return { modules };
     } finally {
       await crawl.context.close().catch(() => {});
       await crawl.browser.close().catch(() => {});

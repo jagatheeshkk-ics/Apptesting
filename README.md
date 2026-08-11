@@ -5,13 +5,15 @@ a login account), and the agent will:
 
 1. **Analyze the URL** — as soon as you enter one and move on, the agent
    crawls the application, identifies its modules (pages, forms, fields), and
-   drafts a starting set of plain-language user stories for each module
-   (heuristic/template-based, not an LLM) — shown right under the URL field
-   for you to edit, remove, or add to before starting the run. Stories are
-   documentation/traceability attached to each module (shown on the run's
-   detail page too) — they don't get parsed for test steps. What actually
-   drives test generation is the crawled fields/forms/buttons for each
-   module, filtered down to whichever test-type checkboxes you selected.
+   drafts a starting set of plain-language user stories for each module —
+   shown right under the URL field for you to edit, remove, or add to before
+   starting the run. Story drafting uses the Claude API when `ANTHROPIC_API_KEY`
+   is set, falling back to simple templates otherwise (still fully editable
+   either way). Stories are documentation/traceability attached to each
+   module (shown on the run's detail page too) — they don't get parsed for
+   test steps. What actually drives test generation is the crawled
+   fields/forms/buttons for each module, filtered down to whichever
+   test-type checkboxes you selected.
 2. **Generate and execute test cases** across the testing pyramid — which
    categories run is your choice, via checkboxes (default: all of them):
    - **Smoke** — pages load, forms render with all expected fields.
@@ -152,6 +154,18 @@ Users needs roles for its role picker); restricting them would break
 those dropdowns for users permitted on the page using the dropdown but
 not on the page that owns that data. Mutations on those same resources
 (create/edit/delete) stay gated as normal.
+
+### AI-generated user stories
+
+Set `ANTHROPIC_API_KEY` (an API key from [console.anthropic.com](https://console.anthropic.com))
+to have the New Test Run page's user-story drafts written by Claude
+(`claude-haiku-4-5-20251001`) instead of the built-in templates. Without a
+key, story drafting still works — it just uses the simpler templates in
+`server/src/agent/userStoryGenerator.ts`. Either way, stories are fully
+editable before you start a run, and the AI call has a 15s timeout with no
+retries and falls straight back to the templates on any error (bad key,
+rate limit, network issue, malformed response), so a flaky or missing key
+never blocks analyzing a URL or starting a run.
 
 ## Database (Supabase)
 
