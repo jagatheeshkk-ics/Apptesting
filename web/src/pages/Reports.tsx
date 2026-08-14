@@ -41,6 +41,11 @@ export default function Reports() {
     dateTo: dateTo || undefined,
     modules: selectedModules,
   });
+  const exportXlsxUrl = api.reportExportXlsxUrl({
+    dateFrom: dateFrom || undefined,
+    dateTo: dateTo || undefined,
+    modules: selectedModules,
+  });
 
   return (
     <div>
@@ -98,9 +103,14 @@ export default function Reports() {
             {loading ? "Searching…" : "Generate report"}
           </button>
           {summary && (
-            <a className="link" href={exportUrl} style={{ marginLeft: 12 }}>
-              Download as HTML
-            </a>
+            <>
+              <a className="link" href={exportUrl} style={{ marginLeft: 12 }}>
+                Download as HTML
+              </a>
+              <a className="link" href={exportXlsxUrl} style={{ marginLeft: 12 }}>
+                Download as Excel
+              </a>
+            </>
           )}
         </form>
       </div>

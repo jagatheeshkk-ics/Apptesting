@@ -519,6 +519,9 @@ export const api = {
   searchTestCaseReport: (params: ReportSearchParams) =>
     fetch(`${BASE}/reports/test-cases?${reportQueryString(params)}`).then((r) => json<TestCaseReportSummary>(r)),
   reportExportUrl: (params: ReportSearchParams) => `${BASE}/reports/test-cases/export?${reportQueryString(params)}`,
+  reportExportXlsxUrl: (params: ReportSearchParams) =>
+    `${BASE}/reports/test-cases/export.xlsx?${reportQueryString(params)}`,
+  testRunReportXlsxUrl: (testRunId: string) => `${BASE}/test-runs/${testRunId}/report.xlsx`,
 
   authStatus: () => fetch(`${BASE}/auth/status`).then((r) => json<{ enabled: boolean }>(r)),
   me: () => fetch(`${BASE}/auth/me`, { credentials: "include" }),
