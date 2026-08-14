@@ -240,6 +240,45 @@ export interface AgentPerformanceKpi {
   runsOverTime: { date: string; runs: number; vulnerabilities: number }[];
 }
 
+export interface CategoryIssueBreakdown {
+  category: TestCategory;
+  totalCases: number;
+  passedCases: number;
+  failedCases: number;
+  errorCases: number;
+  issues: number;
+}
+
+export interface DashboardTrendPoint {
+  period: string;
+  runs: number;
+  issues: number;
+}
+
+export interface DashboardSummary {
+  totalRuns: number;
+  totalCases: number;
+  passedCases: number;
+  failedCases: number;
+  errorCases: number;
+  passRate: number;
+  totalIssues: number;
+  issuesByCategory: CategoryIssueBreakdown[];
+  trend: DashboardTrendPoint[];
+  filterOptions: {
+    projects: { id: string; name: string }[];
+    accounts: { id: string; label: string }[];
+  };
+}
+
+export interface DashboardFilters {
+  projectId?: string; // pass "unassigned" for the Unassigned bucket
+  accountId?: string;
+  from?: string; // YYYY-MM-DD
+  to?: string; // YYYY-MM-DD
+  groupBy?: "day" | "week";
+}
+
 export type FlowAction =
   | "navigate"
   | "fill"
@@ -390,6 +429,16 @@ export const api = {
   accountKpis: () => fetch(`${BASE}/kpi/accounts`).then((r) => json<AccountKpi[]>(r)),
   agentKpi: () => fetch(`${BASE}/kpi/agent`).then((r) => json<AgentPerformanceKpi>(r)),
   projectKpis: () => fetch(`${BASE}/kpi/projects`).then((r) => json<ProjectKpiSummary>(r)),
+  dashboardSummary: (filters: DashboardFilters) => {
+    const params = new URLSearchParams();
+    if (filters.projectId) params.set("projectId", filters.projectId);
+    if (filters.accountId) params.set("accountId", filters.accountId);
+    if (filters.from) params.set("from", filters.from);
+    if (filters.to) params.set("to", filters.to);
+    if (filters.groupBy) params.set("groupBy", filters.groupBy);
+    const qs = params.toString();
+    return fetch(`${BASE}/kpi/dashboard${qs ? `?${qs}` : ""}`).then((r) => json<DashboardSummary>(r));
+  },
 
   listFlows: () => fetch(`${BASE}/flows`).then((r) => json<TestFlow[]>(r)),
   createFlow: (data: {
