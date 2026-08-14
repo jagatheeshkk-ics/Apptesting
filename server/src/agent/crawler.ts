@@ -101,42 +101,74 @@ async function extractFieldsFromForm(page: Page, formSelector: string): Promise<
   );
 }
 
-async function attemptLogin(page: Page, username: string, password: string): Promise<boolean> {
-  const userSelectors = [
-    'input[type="email"]',
-    'input[name*="user" i]',
-    'input[name*="email" i]',
-    'input[id*="user" i]',
-    'input[id*="email" i]',
-  ];
-  const passSelectors = ['input[type="password"]'];
+const USER_FIELD_SELECTORS = [
+  'input[type="email"]',
+  'input[name*="user" i]',
+  'input[name*="email" i]',
+  'input[name*="login" i]',
+  'input[id*="user" i]',
+  'input[id*="email" i]',
+  'input[id*="login" i]',
+];
+const PASSWORD_FIELD_SELECTOR = 'input[type="password"]';
+const SUBMIT_SELECTOR =
+  'button[type="submit"], input[type="submit"], button:has-text("Log in"), button:has-text("Sign in"), button:has-text("Next"), button:has-text("Continue")';
 
-  let userField = null;
-  for (const sel of userSelectors) {
+async function findField(page: Page, selectors: string[]) {
+  for (const sel of selectors) {
     const el = page.locator(sel).first();
-    if (await el.count()) {
-      userField = el;
-      break;
-    }
+    if (await el.count()) return el;
   }
-  const passField = page.locator(passSelectors[0]).first();
+  return null;
+}
 
-  if (!userField || !(await passField.count())) return false;
+async function clickSubmit(page: Page): Promise<boolean> {
+  const btn = page.locator(SUBMIT_SELECTOR).first();
+  if (!(await btn.count())) return false;
+  await Promise.allSettled([page.waitForNavigation({ timeout: 8000 }), btn.click()]);
+  return true;
+}
 
+// Handles both single-page logins (username + password together) and
+// two-step logins (username -> Next/Continue -> password appears on the
+// next screen, e.g. Microsoft/Google/many enterprise SSO-style flows).
+async function attemptLogin(page: Page, username: string, password: string): Promise<boolean> {
+  const userField = await findField(page, USER_FIELD_SELECTORS);
+  if (!userField) return false;
   await userField.fill(username);
+
+  let passField = await findField(page, [PASSWORD_FIELD_SELECTOR]);
+  if (!passField) {
+    const advanced = await clickSubmit(page);
+    if (!advanced) return false;
+    await page.waitForTimeout(500);
+    passField = await findField(page, [PASSWORD_FIELD_SELECTOR]);
+    if (!passField) return false; // still no password step — not a login flow we can complete
+  }
+
   await passField.fill(password);
-
-  const submitBtn = page
-    .locator('button[type="submit"], input[type="submit"], button:has-text("Log in"), button:has-text("Sign in")')
-    .first();
-
-  if (await submitBtn.count()) {
-    await Promise.allSettled([page.waitForNavigation({ timeout: 8000 }), submitBtn.click()]);
-  } else {
+  const submitted = await clickSubmit(page);
+  if (!submitted) {
     await passField.press("Enter");
     await page.waitForTimeout(1500);
   }
   return true;
+}
+
+// Used by the "New test run" page to decide whether to prompt for
+// credentials: a real password field is the strongest signal, but a lone
+// username/email/login-looking field (no more than a couple of other
+// fields, e.g. a language picker) is the first step of a two-step login
+// and should prompt just as eagerly, since the password field won't exist
+// until that first step is submitted.
+export function looksLikeLoginForm(fields: DetectedField[]): boolean {
+  if (fields.some((f) => f.type === "password")) return true;
+  const userLike = fields.some((f) => {
+    if (f.type !== "text" && f.type !== "email") return false;
+    const haystack = `${f.name} ${f.label ?? ""}`.toLowerCase();
+    return /user|login|email|account/.test(haystack);
+  });
+  return userLike && fields.length <= 3;
 }
 
 export async function crawlAndIdentifyModules(opts: CrawlOptions): Promise<CrawlResult> {
