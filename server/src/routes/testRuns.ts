@@ -70,6 +70,15 @@ export async function testRunRoutes(app: FastifyInstance) {
       mode?: "full" | "quick";
       enabledCategories?: unknown;
       moduleStories?: Record<string, string[]>;
+      // Ad-hoc login credentials for this target URL, used when the URL was
+      // detected as login-gated (POST /api/analyze -> requiresLogin) and no
+      // existing Account was picked. Not persisted on the TestRun itself —
+      // either promoted to a real Account (if saveAsAccount) or passed
+      // through to the crawl transiently.
+      username?: string;
+      password?: string;
+      saveAsAccount?: boolean;
+      accountLabel?: string;
     };
     if (!body.targetUrl) return reply.code(400).send({ error: "targetUrl is required" });
 
@@ -81,16 +90,30 @@ export async function testRunRoutes(app: FastifyInstance) {
       if (body.enabledCategories.length) enabledCategories = body.enabledCategories as TestCategory[];
     }
 
+    let accountId = body.accountId || null;
     let projectId = body.projectId || null;
-    if (!projectId && body.accountId) {
-      const account = await prisma.account.findUnique({ where: { id: body.accountId } });
+    if (!projectId && accountId) {
+      const account = await prisma.account.findUnique({ where: { id: accountId } });
       projectId = account?.projectId ?? null;
+    }
+
+    if (!accountId && body.saveAsAccount && body.username && body.password) {
+      const saved = await prisma.account.create({
+        data: {
+          label: body.accountLabel?.trim() || `Login for ${new URL(body.targetUrl).hostname}`,
+          targetUrl: body.targetUrl,
+          username: body.username,
+          password: body.password,
+          projectId,
+        },
+      });
+      accountId = saved.id;
     }
 
     const run = await prisma.testRun.create({
       data: {
         targetUrl: body.targetUrl,
-        accountId: body.accountId || null,
+        accountId,
         projectId,
         mode: body.mode === "quick" ? "quick" : "full",
         enabledCategoriesJson: enabledCategories ? JSON.stringify(enabledCategories) : null,
@@ -98,7 +121,8 @@ export async function testRunRoutes(app: FastifyInstance) {
     });
 
     // fire-and-forget; the run progresses asynchronously and the UI polls status
-    runTestRun(run.id, { moduleStories: body.moduleStories }).catch((err) => {
+    const adHocCredentials = accountId ? undefined : { username: body.username, password: body.password };
+    runTestRun(run.id, { moduleStories: body.moduleStories, ...adHocCredentials }).catch((err) => {
       app.log.error(err, `test run ${run.id} failed`);
     });
 

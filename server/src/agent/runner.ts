@@ -70,7 +70,7 @@ async function buildGeneratedCases(
 
 export async function runTestRun(
   testRunId: string,
-  opts?: { moduleStories?: Record<string, string[]> },
+  opts?: { moduleStories?: Record<string, string[]>; username?: string; password?: string },
 ): Promise<void> {
   const run = await prisma.testRun.findUniqueOrThrow({ where: { id: testRunId }, include: { account: true } });
 
@@ -79,8 +79,11 @@ export async function runTestRun(
 
     const { modules, context, browser } = await crawlAndIdentifyModules({
       targetUrl: run.targetUrl,
-      username: run.account?.username,
-      password: run.account?.password,
+      // Prefer a linked Account's credentials; fall back to ad-hoc
+      // credentials the user typed in for a login-gated URL that wasn't
+      // saved as a reusable Account.
+      username: run.account?.username ?? opts?.username,
+      password: run.account?.password ?? opts?.password,
       onUsageEvent: (evt) => {
         prisma.usageEvent
           .create({

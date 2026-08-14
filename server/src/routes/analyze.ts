@@ -9,20 +9,23 @@ import { generateUserStories } from "../agent/userStoryGenerator.js";
 // reviewed/edited before the user commits to a run.
 export async function analyzeRoutes(app: FastifyInstance) {
   app.post("/api/analyze", async (req, reply) => {
-    const body = req.body as { targetUrl?: string; accountId?: string };
+    const body = req.body as { targetUrl?: string; accountId?: string; username?: string; password?: string };
     if (!body.targetUrl) return reply.code(400).send({ error: "targetUrl is required" });
 
-    let account = null;
+    let username = body.username;
+    let password = body.password;
     if (body.accountId) {
-      account = await prisma.account.findUnique({ where: { id: body.accountId } });
+      const account = await prisma.account.findUnique({ where: { id: body.accountId } });
+      username = account?.username;
+      password = account?.password;
     }
 
     let crawl;
     try {
       crawl = await crawlAndIdentifyModules({
         targetUrl: body.targetUrl,
-        username: account?.username,
-        password: account?.password,
+        username,
+        password,
         maxPages: 8,
         maxDepth: 1,
       });
@@ -40,7 +43,17 @@ export async function analyzeRoutes(app: FastifyInstance) {
           userStories: await generateUserStories(m),
         })),
       );
-      return { modules };
+
+      // Heuristic: a login form was found (username/email + password field)
+      // and we weren't given credentials to get past it — the New Test Run
+      // page uses this to proactively ask for login credentials for this
+      // URL instead of silently testing only whatever's reachable
+      // anonymously.
+      const requiresLogin =
+        !username &&
+        crawl.modules.some((m) => m.type === "form" && m.fields.some((f) => f.type === "password"));
+
+      return { modules, requiresLogin };
     } finally {
       await crawl.context.close().catch(() => {});
       await crawl.browser.close().catch(() => {});
