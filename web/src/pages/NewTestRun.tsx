@@ -27,6 +27,12 @@ export default function NewTestRun() {
   const [analyzedUrl, setAnalyzedUrl] = useState<string | null>(null);
   const [draftStory, setDraftStory] = useState<Record<number, string>>({});
 
+  const [showLoginPrompt, setShowLoginPrompt] = useState(false);
+  const [loginUsername, setLoginUsername] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [saveAsAccount, setSaveAsAccount] = useState(false);
+  const [accountLabel, setAccountLabel] = useState("");
+
   useEffect(() => {
     api.listAccounts().then(setAccounts).catch(() => {});
     api.listProjects().then(setProjects).catch(() => {});
@@ -34,6 +40,7 @@ export default function NewTestRun() {
 
   function onAccountChange(id: string) {
     setAccountId(id);
+    if (id) setShowLoginPrompt(false);
     if (!projectId) {
       const account = accounts.find((a) => a.id === id);
       if (account?.projectId) setProjectId(account.projectId);
@@ -54,11 +61,17 @@ export default function NewTestRun() {
     setAnalyzing(true);
     setAnalyzeError(null);
     try {
-      const { modules: found } = await api.analyzeUrl({ targetUrl, accountId: accountId || undefined });
+      const { modules: found, requiresLogin } = await api.analyzeUrl({
+        targetUrl,
+        accountId: accountId || undefined,
+        username: !accountId && loginUsername ? loginUsername : undefined,
+        password: !accountId && loginPassword ? loginPassword : undefined,
+      });
       setModules(
         found.map((m: AnalyzedModule) => ({ name: m.name, url: m.url, type: m.type, stories: [...m.userStories] })),
       );
       setAnalyzedUrl(targetUrl);
+      if (requiresLogin && !accountId) setShowLoginPrompt(true);
     } catch (err) {
       setAnalyzeError((err as Error).message);
     } finally {
@@ -115,6 +128,8 @@ export default function NewTestRun() {
       const moduleStories: Record<string, string[]> = {};
       for (const m of modules) moduleStories[m.name] = m.stories;
 
+      const useAdHocLogin = !accountId && showLoginPrompt && loginUsername && loginPassword;
+
       const run = await api.createTestRun({
         targetUrl,
         accountId: accountId || undefined,
@@ -122,6 +137,10 @@ export default function NewTestRun() {
         mode: quickMode ? "quick" : "full",
         enabledCategories: Array.from(selectedCategories),
         moduleStories,
+        username: useAdHocLogin ? loginUsername : undefined,
+        password: useAdHocLogin ? loginPassword : undefined,
+        saveAsAccount: useAdHocLogin ? saveAsAccount : undefined,
+        accountLabel: useAdHocLogin && saveAsAccount ? accountLabel : undefined,
       });
       navigate(`/runs/${run.id}`);
     } catch (err) {
@@ -155,6 +174,46 @@ export default function NewTestRun() {
 
           {analyzing && <p style={{ color: "#59636e" }}>Analyzing the application…</p>}
           {analyzeError && <p style={{ color: "#cf222e" }}>Could not analyze this URL: {analyzeError}</p>}
+
+          {showLoginPrompt && !accountId && (
+            <div className="form-row" style={{ border: "1px solid #d4a72c", background: "#fff8e6", borderRadius: 8, padding: 12 }}>
+              <label>This URL requires a login to test beyond the login page</label>
+              <p style={{ margin: "0 0 8px", color: "#59636e", fontSize: 13 }}>
+                Enter the credentials for <strong>{targetUrl}</strong> so the agent can log in and test the full
+                application, not just the login page.
+              </p>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <input
+                  placeholder="Username or email"
+                  value={loginUsername}
+                  onChange={(e) => setLoginUsername(e.target.value)}
+                  style={{ flex: 1, minWidth: 180 }}
+                />
+                <input
+                  type="password"
+                  placeholder="Password"
+                  value={loginPassword}
+                  onChange={(e) => setLoginPassword(e.target.value)}
+                  style={{ flex: 1, minWidth: 180 }}
+                />
+                <button type="button" onClick={runAnalyze} disabled={analyzing || !loginUsername || !loginPassword}>
+                  Re-analyze with these credentials
+                </button>
+              </div>
+              <label style={{ display: "block", fontWeight: 400, marginTop: 10 }}>
+                <input type="checkbox" checked={saveAsAccount} onChange={(e) => setSaveAsAccount(e.target.checked)} style={{ marginRight: 8 }} />
+                Save these as a reusable login account
+              </label>
+              {saveAsAccount && (
+                <input
+                  placeholder="Account label (e.g. Standard user)"
+                  value={accountLabel}
+                  onChange={(e) => setAccountLabel(e.target.value)}
+                  style={{ marginTop: 6, width: "100%" }}
+                />
+              )}
+            </div>
+          )}
 
           {!!modules.length && (
             <div className="form-row">

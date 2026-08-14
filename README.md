@@ -13,7 +13,13 @@ a login account), and the agent will:
    module (shown on the run's detail page too) — they don't get parsed for
    test steps. What actually drives test generation is the crawled
    fields/forms/buttons for each module, filtered down to whichever
-   test-type checkboxes you selected.
+   test-type checkboxes you selected. If the URL turns out to be gated
+   behind a login (a login form is found and no credentials were given),
+   the page detects this and asks for that URL's credentials right there —
+   "Re-analyze with these credentials" then crawls past the login page to
+   discover the authenticated modules too, instead of silently testing
+   only the login page. Those credentials can be used for just that one
+   run, or saved as a reusable login Account.
 2. **Generate and execute test cases** across the testing pyramid — which
    categories run is your choice, via checkboxes (default: all of them):
    - **Smoke** — pages load, forms render with all expected fields.

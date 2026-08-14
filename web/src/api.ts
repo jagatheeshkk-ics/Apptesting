@@ -412,6 +412,10 @@ export const api = {
     mode?: "full" | "quick";
     enabledCategories?: TestCategory[];
     moduleStories?: Record<string, string[]>;
+    username?: string;
+    password?: string;
+    saveAsAccount?: boolean;
+    accountLabel?: string;
   }) =>
     fetch(`${BASE}/test-runs`, {
       method: "POST",
@@ -419,12 +423,12 @@ export const api = {
       body: JSON.stringify(data),
     }).then((r) => json<TestRun>(r)),
 
-  analyzeUrl: (data: { targetUrl: string; accountId?: string }) =>
+  analyzeUrl: (data: { targetUrl: string; accountId?: string; username?: string; password?: string }) =>
     fetch(`${BASE}/analyze`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
-    }).then((r) => json<{ modules: AnalyzedModule[] }>(r)),
+    }).then((r) => json<{ modules: AnalyzedModule[]; requiresLogin: boolean }>(r)),
 
   accountKpis: () => fetch(`${BASE}/kpi/accounts`).then((r) => json<AccountKpi[]>(r)),
   agentKpi: () => fetch(`${BASE}/kpi/agent`).then((r) => json<AgentPerformanceKpi>(r)),
