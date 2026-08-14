@@ -114,6 +114,14 @@ export async function executeSmokeCase(
   return { status: status as ExecutedResult["status"], actual, screenshotPath, durationMs: Date.now() - start };
 }
 
+function normalizePageText(text: string): string {
+  return text.replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+async function readPageText(page: Page): Promise<string> {
+  return normalizePageText(await page.evaluate(() => document.body.innerText).catch(() => ""));
+}
+
 export async function executeBoundaryCase(
   page: Page,
   testCase: GeneratedTestCase,
@@ -127,14 +135,27 @@ export async function executeBoundaryCase(
   try {
     await page.goto(module.url, { waitUntil: "domcontentloaded", timeout: 15000 });
     const beforeUrl = page.url();
+    const beforeContent = await readPageText(page);
     await fillForm(page, module, testCase.input ?? {});
     await submitForm(page, module);
     await page.waitForTimeout(500);
     const afterUrl = page.url();
     const navigated = beforeUrl !== afterUrl;
+    const afterContent = await readPageText(page);
+
+    // The URL changed, but the destination page reads identically to the
+    // page we started on — most likely a redirect loop back to the same
+    // screen (maintenance page, expired session, login bounce) rather than
+    // a genuine accept/reject outcome. Treating that as pass/fail would be
+    // misleading, so flag it for manual review instead.
+    const redirectLoop = navigated && !!beforeContent && beforeContent === afterContent;
 
     const expectsRejection = /rejected|validation error/i.test(testCase.expectation);
-    if (expectsRejection) {
+    if (redirectLoop) {
+      status = "error";
+      actual =
+        "URL changed after submission, but the resulting page's content is identical to the page shown before submitting — this looks like a redirect loop back to the same screen (e.g. a maintenance page or an expired/invalid session) rather than a real accept/reject outcome. Verify manually.";
+    } else if (expectsRejection) {
       status = navigated ? "fail" : "pass";
       actual = navigated
         ? "Form navigated away (submission appears to have been accepted) despite input expected to be rejected — verify manually."
