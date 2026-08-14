@@ -237,6 +237,17 @@ run `npx playwright install chromium` inside `server/`, or point
 `CHROMIUM_EXECUTABLE_PATH` in `server/.env` at an existing Chromium/Chrome
 binary.
 
+### Run speed
+
+Test cases (and flows) within a run execute concurrently — by default 4 at a
+time, each in its own browser tab sharing the crawl's logged-in session —
+instead of one at a time. Set `TEST_EXECUTION_CONCURRENCY` in `server/.env`
+to change this: lower it (e.g. `1`) on a memory-constrained host or if the
+target app doesn't tolerate concurrent requests well (some apps enforce a
+single active session, or invalidate CSRF tokens on each page load, which
+can turn concurrent execution into false failures); raise it if the host has
+room and you want runs to finish faster.
+
 ## Deploying to production (Render)
 
 The `Dockerfile` builds a single image that runs the Fastify API and also
