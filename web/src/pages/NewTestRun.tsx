@@ -160,6 +160,11 @@ export default function NewTestRun() {
 
           {analyzing && <p style={{ color: "#59636e" }}>Analyzing the application…</p>}
           {analyzeError && <p style={{ color: "#cf222e" }}>Could not analyze this URL: {analyzeError}</p>}
+          {!!modules.length && (
+            <p style={{ color: "#59636e", fontSize: 13 }}>
+              Module(s) detected: <strong>{modules.map((m) => m.name).join(", ")}</strong>
+            </p>
+          )}
 
           {showLoginPrompt && (
             <div className="form-row" style={{ border: "1px solid #d4a72c", background: "#fff8e6", borderRadius: 8, padding: 12 }}>
