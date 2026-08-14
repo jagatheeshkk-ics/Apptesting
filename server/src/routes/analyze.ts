@@ -1,6 +1,6 @@
 import { FastifyInstance } from "fastify";
 import { prisma } from "../db.js";
-import { crawlAndIdentifyModules } from "../agent/crawler.js";
+import { crawlAndIdentifyModules, looksLikeLoginForm } from "../agent/crawler.js";
 import { generateUserStories } from "../agent/userStoryGenerator.js";
 
 // Crawl-only preview: identifies modules on a URL and generates a starting
@@ -44,14 +44,12 @@ export async function analyzeRoutes(app: FastifyInstance) {
         })),
       );
 
-      // Heuristic: a login form was found (username/email + password field)
-      // and we weren't given credentials to get past it — the New Test Run
-      // page uses this to proactively ask for login credentials for this
-      // URL instead of silently testing only whatever's reachable
-      // anonymously.
-      const requiresLogin =
-        !username &&
-        crawl.modules.some((m) => m.type === "form" && m.fields.some((f) => f.type === "password"));
+      // Heuristic: a login form was found (a password field, or the first
+      // step of a two-step login — see looksLikeLoginForm) and we weren't
+      // given credentials to get past it — the New Test Run page uses this
+      // to proactively ask for login credentials for this URL instead of
+      // silently testing only whatever's reachable anonymously.
+      const requiresLogin = !username && crawl.modules.some((m) => m.type === "form" && looksLikeLoginForm(m.fields));
 
       return { modules, requiresLogin };
     } finally {
