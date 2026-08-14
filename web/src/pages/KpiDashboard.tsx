@@ -1,9 +1,16 @@
 import { useEffect, useState } from "react";
-import { AccountKpi, AgentPerformanceKpi, api } from "../api.js";
+import { AccountKpi, AgentPerformanceKpi, DashboardSummary, TEST_CATEGORY_LABELS, api } from "../api.js";
 
 export default function KpiDashboard() {
   const [accountKpis, setAccountKpis] = useState<AccountKpi[]>([]);
   const [agentKpi, setAgentKpi] = useState<AgentPerformanceKpi | null>(null);
+
+  const [projectId, setProjectId] = useState("");
+  const [accountId, setAccountId] = useState("");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [groupBy, setGroupBy] = useState<"day" | "week">("day");
+  const [summary, setSummary] = useState<DashboardSummary | null>(null);
 
   useEffect(() => {
     const load = () => {
@@ -15,9 +22,153 @@ export default function KpiDashboard() {
     return () => clearInterval(t);
   }, []);
 
+  useEffect(() => {
+    const load = () =>
+      api
+        .dashboardSummary({ projectId: projectId || undefined, accountId: accountId || undefined, from: from || undefined, to: to || undefined, groupBy })
+        .then(setSummary)
+        .catch(() => {});
+    load();
+    const t = setInterval(load, 5000);
+    return () => clearInterval(t);
+  }, [projectId, accountId, from, to, groupBy]);
+
   return (
     <div>
       <h2>KPI dashboard</h2>
+
+      <div className="card">
+        <h3>Overview</h3>
+        <div className="form-row" style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "flex-end" }}>
+          <div>
+            <label>Project</label>
+            <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+              <option value="">All projects</option>
+              <option value="unassigned">Unassigned</option>
+              {summary?.filterOptions.projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label>Account (user)</label>
+            <select value={accountId} onChange={(e) => setAccountId(e.target.value)}>
+              <option value="">All accounts</option>
+              {summary?.filterOptions.accounts.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label>From</label>
+            <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+          </div>
+          <div>
+            <label>To</label>
+            <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+          </div>
+          <div>
+            <label>Trend grouping</label>
+            <select value={groupBy} onChange={(e) => setGroupBy(e.target.value as "day" | "week")}>
+              <option value="day">Daily</option>
+              <option value="week">Weekly</option>
+            </select>
+          </div>
+          {(projectId || accountId || from || to) && (
+            <button
+              type="button"
+              onClick={() => {
+                setProjectId("");
+                setAccountId("");
+                setFrom("");
+                setTo("");
+              }}
+            >
+              Clear filters
+            </button>
+          )}
+        </div>
+
+        {summary && (
+          <>
+            <div className="kpi-grid" style={{ marginTop: 16 }}>
+              <div className="kpi-tile">
+                <div className="n">{summary.totalRuns}</div>
+                <div className="l">Total test runs</div>
+              </div>
+              <div className="kpi-tile">
+                <div className="n">{summary.totalCases}</div>
+                <div className="l">Total test cases</div>
+              </div>
+              <div className="kpi-tile">
+                <div className="n">{(summary.passRate * 100).toFixed(0)}%</div>
+                <div className="l">Pass rate</div>
+              </div>
+              <div className="kpi-tile">
+                <div className="n">{summary.totalIssues}</div>
+                <div className="l">Total issues (fail + error)</div>
+              </div>
+            </div>
+
+            <h4 style={{ marginTop: 20 }}>Issues by test type</h4>
+            <table>
+              <thead>
+                <tr>
+                  <th>Type</th>
+                  <th>Total cases</th>
+                  <th>Passed</th>
+                  <th>Failed</th>
+                  <th>Errored</th>
+                  <th>Issues</th>
+                </tr>
+              </thead>
+              <tbody>
+                {summary.issuesByCategory.map((c) => (
+                  <tr key={c.category}>
+                    <td>{TEST_CATEGORY_LABELS[c.category]}</td>
+                    <td>{c.totalCases}</td>
+                    <td>{c.passedCases}</td>
+                    <td>{c.failedCases}</td>
+                    <td>{c.errorCases}</td>
+                    <td>
+                      <strong>{c.issues}</strong>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            <h4 style={{ marginTop: 20 }}>{groupBy === "week" ? "Weekly" : "Daily"} trend</h4>
+            <table>
+              <thead>
+                <tr>
+                  <th>{groupBy === "week" ? "Week of" : "Date"}</th>
+                  <th>Runs</th>
+                  <th>Issues</th>
+                </tr>
+              </thead>
+              <tbody>
+                {summary.trend.map((t) => (
+                  <tr key={t.period}>
+                    <td>{t.period}</td>
+                    <td>{t.runs}</td>
+                    <td>{t.issues}</td>
+                  </tr>
+                ))}
+                {!summary.trend.length && (
+                  <tr>
+                    <td colSpan={3}>No test runs in this range.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </>
+        )}
+      </div>
 
       <div className="card">
         <h3>Agent / system performance</h3>

@@ -1,4 +1,6 @@
 import { prisma } from "../db.js";
+import { Prisma } from "../../generated/prisma/index.js";
+import { TestCategory } from "../types.js";
 
 export interface ModuleBreakdown {
   moduleName: string;
@@ -192,6 +194,134 @@ export async function computeAccountKpis(): Promise<AccountKpi[]> {
       lastRunAt: lastRun ? lastRun.startedAt.toISOString() : null,
     };
   });
+}
+
+const ALL_CATEGORIES: TestCategory[] = [
+  "smoke",
+  "boundary",
+  "vulnerability",
+  "stress",
+  "performance",
+  "compatibility",
+  "accessibility",
+  "flow",
+];
+
+export interface CategoryIssueBreakdown {
+  category: TestCategory;
+  totalCases: number;
+  passedCases: number;
+  failedCases: number;
+  errorCases: number;
+  issues: number; // failedCases + errorCases
+}
+
+export interface DashboardTrendPoint {
+  period: string; // groupBy "day": YYYY-MM-DD; "week": YYYY-MM-DD of that week's Monday
+  runs: number;
+  issues: number;
+}
+
+export interface DashboardFilterOptions {
+  projects: { id: string; name: string }[];
+  accounts: { id: string; label: string }[];
+}
+
+export interface DashboardSummary {
+  totalRuns: number;
+  totalCases: number;
+  passedCases: number;
+  failedCases: number;
+  errorCases: number;
+  passRate: number;
+  totalIssues: number;
+  issuesByCategory: CategoryIssueBreakdown[];
+  trend: DashboardTrendPoint[];
+  filterOptions: DashboardFilterOptions;
+}
+
+export interface DashboardFilters {
+  projectId?: string | null; // null = "Unassigned" bucket; undefined = all projects
+  accountId?: string;
+  from?: Date;
+  to?: Date;
+  groupBy?: "day" | "week";
+}
+
+// Monday of the ISO week containing `date`, as a YYYY-MM-DD string — used as
+// both the sort key and the display label for weekly grouping.
+function weekKey(date: Date): string {
+  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  const isoDay = d.getUTCDay() || 7; // Mon=1 .. Sun=7
+  d.setUTCDate(d.getUTCDate() - isoDay + 1);
+  return d.toISOString().slice(0, 10);
+}
+
+export async function computeDashboardSummary(filters: DashboardFilters): Promise<DashboardSummary> {
+  const where: Prisma.TestRunWhereInput = {};
+  if (filters.projectId !== undefined) where.projectId = filters.projectId;
+  if (filters.accountId) where.accountId = filters.accountId;
+  if (filters.from || filters.to) {
+    where.startedAt = {};
+    if (filters.from) where.startedAt.gte = filters.from;
+    if (filters.to) where.startedAt.lte = filters.to;
+  }
+
+  const [runs, projects, accounts] = await Promise.all([
+    prisma.testRun.findMany({
+      where,
+      include: { testCases: { include: { result: true } } },
+      orderBy: { startedAt: "asc" },
+    }),
+    prisma.project.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    prisma.account.findMany({ select: { id: true, label: true }, orderBy: { label: "asc" } }),
+  ]);
+
+  const allCases = runs.flatMap((r) => r.testCases);
+  const withResult = allCases.filter((c) => c.result);
+  const passed = withResult.filter((c) => c.result!.status === "pass").length;
+  const failed = withResult.filter((c) => c.result!.status === "fail").length;
+  const errored = withResult.filter((c) => c.result!.status === "error").length;
+
+  const issuesByCategory: CategoryIssueBreakdown[] = ALL_CATEGORIES.map((category) => {
+    const cases = withResult.filter((c) => c.category === category);
+    const f = cases.filter((c) => c.result!.status === "fail").length;
+    const e = cases.filter((c) => c.result!.status === "error").length;
+    return {
+      category,
+      totalCases: cases.length,
+      passedCases: cases.filter((c) => c.result!.status === "pass").length,
+      failedCases: f,
+      errorCases: e,
+      issues: f + e,
+    };
+  });
+
+  const groupBy = filters.groupBy ?? "day";
+  const byPeriod = new Map<string, { runIds: Set<string>; issues: number }>();
+  for (const r of runs) {
+    const period = groupBy === "week" ? weekKey(r.startedAt) : r.startedAt.toISOString().slice(0, 10);
+    const entry = byPeriod.get(period) ?? { runIds: new Set(), issues: 0 };
+    entry.runIds.add(r.id);
+    entry.issues += r.testCases.filter((c) => c.result && c.result.status !== "pass").length;
+    byPeriod.set(period, entry);
+  }
+  const trend = Array.from(byPeriod.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([period, v]) => ({ period, runs: v.runIds.size, issues: v.issues }));
+
+  return {
+    totalRuns: runs.length,
+    totalCases: allCases.length,
+    passedCases: passed,
+    failedCases: failed,
+    errorCases: errored,
+    passRate: withResult.length ? passed / withResult.length : 0,
+    totalIssues: failed + errored,
+    issuesByCategory,
+    trend,
+    filterOptions: { projects, accounts },
+  };
 }
 
 export async function computeAgentPerformanceKpi(): Promise<AgentPerformanceKpi> {

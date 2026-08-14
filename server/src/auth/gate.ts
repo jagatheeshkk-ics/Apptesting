@@ -39,6 +39,7 @@ const ROUTE_RULES: RouteRule[] = [
   { method: "*", prefix: "/api/reports", page: "reports" },
   { method: "*", prefix: "/api/kpi/accounts", page: "kpi" },
   { method: "*", prefix: "/api/kpi/agent", page: "kpi" },
+  { method: "*", prefix: "/api/kpi/dashboard", page: "kpi" },
 ];
 
 function matchRule(method: string, url: string): PageKey | null {
