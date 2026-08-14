@@ -54,6 +54,10 @@ export default function TestRunDetail() {
           <p>
             <a className="link" href={`/reports/${run.reportPath}`} target="_blank" rel="noreferrer">
               Open full HTML report ↗
+            </a>{" "}
+            &nbsp;
+            <a className="link" href={api.testRunReportXlsxUrl(run.id)}>
+              Download as Excel
             </a>
           </p>
         )}

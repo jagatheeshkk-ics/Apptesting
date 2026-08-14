@@ -1,6 +1,8 @@
 import { FastifyInstance } from "fastify";
 import { prisma } from "../db.js";
 import { runTestRun } from "../agent/runner.js";
+import { getCurrentUsername } from "../auth/currentUser.js";
+import { buildTestRunXlsx } from "../report/xlsxReportBuilder.js";
 import { TestCategory } from "../types.js";
 
 const TEST_CATEGORIES: TestCategory[] = [
@@ -62,6 +64,18 @@ export async function testRunRoutes(app: FastifyInstance) {
     };
   });
 
+  app.get("/api/test-runs/:id/report.xlsx", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const run = await prisma.testRun.findUnique({ where: { id }, select: { id: true } });
+    if (!run) return reply.code(404).send({ error: "not found" });
+
+    const buffer = await buildTestRunXlsx(id);
+    reply
+      .header("Content-Disposition", `attachment; filename="test-run-${id}.xlsx"`)
+      .type("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+      .send(buffer);
+  });
+
   app.post("/api/test-runs", async (req, reply) => {
     const body = req.body as {
       targetUrl: string;
@@ -110,6 +124,8 @@ export async function testRunRoutes(app: FastifyInstance) {
       accountId = saved.id;
     }
 
+    const createdByUsername = await getCurrentUsername(req);
+
     const run = await prisma.testRun.create({
       data: {
         targetUrl: body.targetUrl,
@@ -117,6 +133,7 @@ export async function testRunRoutes(app: FastifyInstance) {
         projectId,
         mode: body.mode === "quick" ? "quick" : "full",
         enabledCategoriesJson: enabledCategories ? JSON.stringify(enabledCategories) : null,
+        createdByUsername,
       },
     });
 

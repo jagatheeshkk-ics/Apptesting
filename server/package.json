@@ -19,6 +19,7 @@
     "@fastify/static": "^7.0.4",
     "@google/genai": "^2.16.0",
     "@prisma/client": "^5.19.1",
+    "exceljs": "^4.4.0",
     "fastify": "^4.28.1",
     "nodemailer": "^9.0.5",
     "playwright": "1.62.1"

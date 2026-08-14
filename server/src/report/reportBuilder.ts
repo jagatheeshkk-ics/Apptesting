@@ -3,12 +3,22 @@ import path from "node:path";
 import { prisma } from "../db.js";
 import { RegressionSummary } from "../analysis/regression.js";
 import { escapeHtml, statusBadge, testTypeBadge } from "./htmlHelpers.js";
+import { ALL_TEST_CATEGORIES, TEST_CATEGORY_LABELS, TestCategory } from "../types.js";
+
+// "Full" when every category was selected (or no filter was applied at
+// all); otherwise the specific test types the user picked, so the report
+// doesn't just say "full" when it was actually a filtered run.
+export function testTypesLabel(enabledCategoriesJson: string | null): string {
+  const enabled = enabledCategoriesJson ? (JSON.parse(enabledCategoriesJson) as TestCategory[]) : null;
+  if (!enabled || enabled.length >= ALL_TEST_CATEGORIES.length) return "Full";
+  return enabled.map((c) => TEST_CATEGORY_LABELS[c] ?? c).join(", ");
+}
 
 export async function buildHtmlReport(testRunId: string, reportDir: string, screenshotDir: string): Promise<string> {
   const run = await prisma.testRun.findUniqueOrThrow({
     where: { id: testRunId },
     include: {
-      account: true,
+      modules: true,
       testCases: {
         include: {
           result: true,
@@ -191,9 +201,10 @@ export async function buildHtmlReport(testRunId: string, reportDir: string, scre
 <body>
   <h1>Application Test Report</h1>
   <div class="meta">
+    ${run.modules.length ? `Module(s): <strong>${run.modules.map((m) => escapeHtml(m.name)).join(", ")}</strong><br/>` : ""}
     Target: <strong>${escapeHtml(run.targetUrl)}</strong><br/>
-    Account: ${run.account ? escapeHtml(run.account.label) + " (" + escapeHtml(run.account.role ?? "n/a") + ")" : "None (anonymous)"}<br/>
-    Mode: ${escapeHtml(run.mode)}<br/>
+    Run by: ${run.createdByUsername ? escapeHtml(run.createdByUsername) : "Unknown"}<br/>
+    Mode: ${run.mode === "quick" ? "Quick/sanity — " : ""}${escapeHtml(testTypesLabel(run.enabledCategoriesJson))}<br/>
     Run started: ${run.startedAt.toISOString()}<br/>
     Run completed: ${run.completedAt?.toISOString() ?? "—"}
   </div>

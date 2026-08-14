@@ -44,6 +44,19 @@ export type TestCategory =
   | "accessibility"
   | "flow";
 
+export const TEST_CATEGORY_LABELS: Record<TestCategory, string> = {
+  smoke: "Smoke",
+  boundary: "Boundary value",
+  vulnerability: "Vulnerability (security)",
+  stress: "Stress / load",
+  performance: "Performance",
+  compatibility: "Compatibility (viewport)",
+  accessibility: "Accessibility",
+  flow: "Flows (integration/UAT)",
+};
+
+export const ALL_TEST_CATEGORIES = Object.keys(TEST_CATEGORY_LABELS) as TestCategory[];
+
 export type TestType = "positive" | "negative";
 
 export interface GeneratedTestCase {

@@ -59,7 +59,16 @@ a login account), and the agent will:
    valid input/normal usage, or negative — invalid/malicious input expected
    to be rejected), its **expected result**, and its **actual result** side
    by side, on the run detail page, the downloadable report, and the
-   Reports page's cross-run search.
+   Reports page's cross-run search. The report header also names the
+   **module(s)** covered, **who ran it** (the signed-in platform user, when
+   auth is enabled), and the **test types actually selected** ("Full" only
+   if every category was included, otherwise the specific types picked).
+   Boundary tests also detect redirect-loop pages (URL changes but the
+   destination reads identically to the starting page — e.g. a maintenance
+   or expired-session bounce) and flag those as an error needing manual
+   review instead of a misleading pass/fail. Both the per-run report and
+   the Reports page are also **downloadable as an Excel workbook**, not
+   just HTML.
 5. **Track KPIs** across multiple login accounts: test execution KPIs (pass
    rate, vulnerabilities/accessibility/performance issues found), application
    usage/behavior KPIs (response times, errors, latency under load), and

@@ -2,6 +2,7 @@ import { FastifyInstance } from "fastify";
 import { Prisma } from "../../generated/prisma/index.js";
 import { prisma } from "../db.js";
 import { buildFilteredHtmlReport } from "../report/filteredReportBuilder.js";
+import { buildFilteredXlsxReport } from "../report/filteredXlsxReportBuilder.js";
 
 const testCaseReportInclude = {
   result: true,
@@ -100,5 +101,22 @@ export async function reportRoutes(app: FastifyInstance) {
       .header("Content-Disposition", `attachment; filename="test-case-report-${Date.now()}.html"`)
       .type("text/html")
       .send(html);
+  });
+
+  app.get("/api/reports/test-cases/export.xlsx", async (req, reply) => {
+    const filters = parseFilters(req.query as Record<string, unknown>);
+    const where = buildWhere(filters);
+
+    const testCases = await prisma.testCase.findMany({
+      where,
+      include: testCaseReportInclude,
+      orderBy: { result: { createdAt: "desc" } },
+    });
+
+    const buffer = await buildFilteredXlsxReport(testCases, filters);
+    reply
+      .header("Content-Disposition", `attachment; filename="test-case-report-${Date.now()}.xlsx"`)
+      .type("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+      .send(buffer);
   });
 }
