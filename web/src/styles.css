@@ -96,6 +96,8 @@ th { background: #f6f8fa; }
 .badge.pending, .badge.crawling, .badge.generating, .badge.executing { background: #57606a; }
 .badge.completed { background: #1a7f37; }
 .badge.failed { background: #cf222e; }
+.badge.positive { background: #0969da; }
+.badge.negative { background: #8250df; }
 
 .kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px; }
 .kpi-tile { background: #fff; border: 1px solid #d0d7de; border-radius: 8px; padding: 14px; }

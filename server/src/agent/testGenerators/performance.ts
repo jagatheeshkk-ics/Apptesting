@@ -8,5 +8,6 @@ export function generatePerformanceTests(modules: DetectedModule[]): GeneratedTe
     description: `Measure navigation timing and page weight for ${page.url}.`,
     moduleName: page.name,
     expectation: "DOMContentLoaded under 3s, load event under 5s, and a reasonable number/size of downloaded resources.",
+    testType: "positive" as const,
   }));
 }

@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { prisma } from "../db.js";
 import { RegressionSummary } from "../analysis/regression.js";
-import { escapeHtml, statusBadge } from "./htmlHelpers.js";
+import { escapeHtml, statusBadge, testTypeBadge } from "./htmlHelpers.js";
 
 export async function buildHtmlReport(testRunId: string, reportDir: string, screenshotDir: string): Promise<string> {
   const run = await prisma.testRun.findUniqueOrThrow({
@@ -49,8 +49,10 @@ export async function buildHtmlReport(testRunId: string, reportDir: string, scre
           : "—";
         return `<tr>
           <td>${escapeHtml(tc.name)}</td>
+          <td>${testTypeBadge(tc.testType)}</td>
           <td>${r ? statusBadge(r.status) : "—"}</td>
           <td>${r?.severity ? escapeHtml(r.severity) : "—"}</td>
+          <td>${escapeHtml(tc.expectation ?? "—")}</td>
           <td>${escapeHtml(r?.actual ?? "")}</td>
           <td>${r ? `${r.durationMs}ms` : "—"}</td>
           <td>${screenshotTag}</td>
@@ -60,7 +62,7 @@ export async function buildHtmlReport(testRunId: string, reportDir: string, scre
     return `
       <h2>${title} (${cases.length})</h2>
       <table>
-        <thead><tr><th>Test case</th><th>Status</th><th>Severity</th><th>Observed behavior</th><th>Duration</th><th>Screenshot</th></tr></thead>
+        <thead><tr><th>Test case</th><th>Type</th><th>Status</th><th>Severity</th><th>Expected result</th><th>Actual result</th><th>Duration</th><th>Screenshot</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>`;
   };
@@ -74,6 +76,7 @@ export async function buildHtmlReport(testRunId: string, reportDir: string, scre
         return `<tr>
           <td>${escapeHtml(tc.name)}</td>
           <td>${r ? statusBadge(r.status) : "—"}</td>
+          <td>${escapeHtml(tc.expectation ?? "—")}</td>
           <td>${m?.concurrency ?? "—"}</td>
           <td>${m?.totalRequests ?? "—"}</td>
           <td>${m ? `${m.errorRatePct}% (${m.errorCount})` : "—"}</td>
@@ -85,7 +88,7 @@ export async function buildHtmlReport(testRunId: string, reportDir: string, scre
     return `
       <h2>Stress tests (${cases.length})</h2>
       <table>
-        <thead><tr><th>Test case</th><th>Status</th><th>Concurrency</th><th>Requests</th><th>Error rate</th><th>Avg latency</th><th>P95 latency</th></tr></thead>
+        <thead><tr><th>Test case</th><th>Status</th><th>Expected result</th><th>Concurrency</th><th>Requests</th><th>Error rate</th><th>Avg latency</th><th>P95 latency</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>`;
   };
@@ -99,6 +102,7 @@ export async function buildHtmlReport(testRunId: string, reportDir: string, scre
         return `<tr>
           <td>${escapeHtml(tc.name)}</td>
           <td>${r ? statusBadge(r.status) : "—"}</td>
+          <td>${escapeHtml(tc.expectation ?? "—")}</td>
           <td>${m ? `${m.domContentLoadedMs}ms` : "—"}</td>
           <td>${m ? `${m.loadEventMs}ms` : "—"}</td>
           <td>${m ? `${m.resourceCount}` : "—"}</td>
@@ -109,7 +113,7 @@ export async function buildHtmlReport(testRunId: string, reportDir: string, scre
     return `
       <h2>Performance tests (${cases.length})</h2>
       <table>
-        <thead><tr><th>Test case</th><th>Status</th><th>DOMContentLoaded</th><th>Load event</th><th>Resources</th><th>Transfer size</th></tr></thead>
+        <thead><tr><th>Test case</th><th>Status</th><th>Expected result</th><th>DOMContentLoaded</th><th>Load event</th><th>Resources</th><th>Transfer size</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>`;
   };
@@ -136,7 +140,8 @@ export async function buildHtmlReport(testRunId: string, reportDir: string, scre
           .join("\n");
         return `
         <h3>${escapeHtml(tc.name)} ${r ? statusBadge(r.status) : ""}</h3>
-        <p style="color:#59636e">${escapeHtml(r?.actual ?? "")}</p>
+        <p style="color:#59636e"><strong>Expected:</strong> ${escapeHtml(tc.expectation ?? "—")}</p>
+        <p style="color:#59636e"><strong>Actual:</strong> ${escapeHtml(r?.actual ?? "")}</p>
         <table>
           <thead><tr><th>#</th><th>Action</th><th>Status</th><th>Detail</th><th>Screenshot</th></tr></thead>
           <tbody>${steps}</tbody>
