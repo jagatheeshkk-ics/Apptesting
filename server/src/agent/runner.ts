@@ -1,5 +1,6 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { Page } from "playwright";
 import { prisma } from "../db.js";
 import { crawlAndIdentifyModules } from "./crawler.js";
 import { generateSmokeTests } from "./testGenerators/smoke.js";
@@ -23,6 +24,27 @@ import { DetectedModule, GeneratedTestCase, TestCategory } from "../types.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const SCREENSHOT_DIR = path.join(__dirname, "..", "..", "storage", "screenshots");
 export const REPORT_DIR = path.join(__dirname, "..", "..", "storage", "reports");
+
+// How many test cases (or flows) run at once, each in its own browser tab
+// sharing the crawl's logged-in session. Higher = faster runs, at the cost
+// of more memory/CPU and more concurrent load against the target app.
+// Override with TEST_EXECUTION_CONCURRENCY if the host is memory-constrained
+// or the target app doesn't tolerate concurrent requests well.
+const EXECUTION_CONCURRENCY = Math.max(1, Number(process.env.TEST_EXECUTION_CONCURRENCY) || 4);
+
+// Runs `worker` over every item in `items`, at most `concurrency` at a time,
+// using `pages[i]` for whichever items land on lane i.
+async function runPooled<T>(items: T[], pages: Page[], worker: (item: T, page: Page) => Promise<void>): Promise<void> {
+  let cursor = 0;
+  const lane = async (page: Page) => {
+    while (true) {
+      const idx = cursor++;
+      if (idx >= items.length) return;
+      await worker(items[idx], page);
+    }
+  };
+  await Promise.all(pages.map(lane));
+}
 
 async function buildGeneratedCases(
   modules: DetectedModule[],
@@ -148,7 +170,6 @@ export async function runTestRun(
       data: { status: "executing", totalCases: generated.length + matchingFlows.length },
     });
 
-    const page = await context.newPage();
     let passed = 0;
     let failed = 0;
     let errored = 0;
@@ -159,12 +180,25 @@ export async function runTestRun(
       else errored++;
     };
 
-    for (const tc of generated) {
+    // Fire-and-forget: keeps the progress counters live without making every
+    // case/flow wait on a DB round-trip before the next one can start.
+    const flushProgress = () => {
+      prisma.testRun
+        .update({ where: { id: testRunId }, data: { passedCases: passed, failedCases: failed, errorCases: errored } })
+        .catch(() => {});
+    };
+
+    const casesConcurrency = Math.min(EXECUTION_CONCURRENCY, Math.max(generated.length, 1));
+    const casePages = await Promise.all(Array.from({ length: casesConcurrency }, () => context.newPage()));
+
+    await runPooled(generated, casePages, async (tc, page) => {
       const module = moduleByName.get(tc.moduleName);
       const moduleRecord = moduleRecordByName.get(tc.moduleName);
-      if (!module) continue;
+      if (!module) return;
 
-      const caseRecord = await prisma.testCase.create({
+      // Overlap the DB insert with test execution — nothing about running
+      // the case depends on the row existing yet, only the result write does.
+      const caseRecordPromise = prisma.testCase.create({
         data: {
           testRunId,
           moduleId: moduleRecord?.id,
@@ -216,6 +250,9 @@ export async function runTestRun(
       }
 
       tally(result.status);
+      flushProgress();
+
+      const caseRecord = await caseRecordPromise;
 
       await prisma.testResult.create({
         data: {
@@ -253,14 +290,18 @@ export async function runTestRun(
           },
         });
       }
+    });
 
-      await prisma.testRun.update({
-        where: { id: testRunId },
-        data: { passedCases: passed, failedCases: failed, errorCases: errored },
-      });
-    }
+    const flowConcurrency = Math.min(EXECUTION_CONCURRENCY, Math.max(matchingFlows.length, 1));
+    const flowPages =
+      flowConcurrency <= casePages.length
+        ? casePages.slice(0, flowConcurrency)
+        : [
+            ...casePages,
+            ...(await Promise.all(Array.from({ length: flowConcurrency - casePages.length }, () => context.newPage()))),
+          ];
 
-    for (const flow of matchingFlows) {
+    await runPooled(matchingFlows, flowPages, async (flow, page) => {
       const caseRecord = await prisma.testCase.create({
         data: {
           testRunId,
@@ -298,6 +339,7 @@ export async function runTestRun(
       }
 
       tally(overallStatus);
+      flushProgress();
 
       await prisma.testResult.create({
         data: {
@@ -307,12 +349,13 @@ export async function runTestRun(
           durationMs: 0,
         },
       });
+    });
 
-      await prisma.testRun.update({
-        where: { id: testRunId },
-        data: { passedCases: passed, failedCases: failed, errorCases: errored },
-      });
-    }
+    flushProgress();
+    await prisma.testRun.update({
+      where: { id: testRunId },
+      data: { passedCases: passed, failedCases: failed, errorCases: errored },
+    });
 
     await context.close();
     await browser.close();
