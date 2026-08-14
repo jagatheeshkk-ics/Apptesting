@@ -19,6 +19,7 @@ export function generateCompatibilityTests(modules: DetectedModule[]): Generated
         moduleName: page.name,
         input: { width: String(vp.width), height: String(vp.height) },
         expectation: "No horizontal overflow beyond the viewport width and no console errors at this size.",
+        testType: "positive",
       });
     }
   }

@@ -174,12 +174,16 @@ export interface RunModule {
   userStories: string[];
 }
 
+export type TestType = "positive" | "negative";
+
 export interface TestCase {
   id: string;
   category: TestCategory;
   name: string;
   description: string;
   inputJson: string | null;
+  expectation: string | null;
+  testType: TestType;
   result: TestResult | null;
   stressMetric?: StressMetric | null;
   performanceMetric?: PerformanceMetric | null;
@@ -343,6 +347,8 @@ export interface TestCaseReportRow {
   id: string;
   category: TestCategory;
   name: string;
+  expectation: string | null;
+  testType: TestType;
   module: { name: string } | null;
   result: {
     status: "pass" | "fail" | "error";

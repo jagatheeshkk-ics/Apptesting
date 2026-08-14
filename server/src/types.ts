@@ -44,6 +44,8 @@ export type TestCategory =
   | "accessibility"
   | "flow";
 
+export type TestType = "positive" | "negative";
+
 export interface GeneratedTestCase {
   category: TestCategory;
   name: string;
@@ -53,6 +55,9 @@ export interface GeneratedTestCase {
   // For boundary/vulnerability cases run against a specific field
   targetField?: string;
   expectation: string;
+  // positive = valid input / normal expected usage; negative = invalid or
+  // malicious input, expected to be rejected/handled safely
+  testType: TestType;
 }
 
 export interface ViewportPreset {

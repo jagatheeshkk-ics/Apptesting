@@ -161,6 +161,8 @@ model TestCase {
   name        String
   description String
   inputJson   String? // JSON-encoded input(s) used for this case
+  expectation String? // expected result this case checks for, shown alongside the actual/observed result
+  testType    String  @default("positive") // positive (valid/expected input or normal usage) | negative (invalid/malicious input, expected to be rejected)
 
   result            TestResult?
   stressMetric      StressMetric?

@@ -55,7 +55,11 @@ a login account), and the agent will:
    tests, concurrent HTTP requests — capturing a screenshot and
    timing/observed-behavior evidence for each one.
 4. **Produce a detailed HTML test report** per run, with embedded screenshots
-   and a regression summary.
+   and a regression summary. Every test case shows its **type** (positive —
+   valid input/normal usage, or negative — invalid/malicious input expected
+   to be rejected), its **expected result**, and its **actual result** side
+   by side, on the run detail page, the downloadable report, and the
+   Reports page's cross-run search.
 5. **Track KPIs** across multiple login accounts: test execution KPIs (pass
    rate, vulnerabilities/accessibility/performance issues found), application
    usage/behavior KPIs (response times, errors, latency under load), and

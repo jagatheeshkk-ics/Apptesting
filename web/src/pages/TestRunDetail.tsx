@@ -124,8 +124,10 @@ export default function TestRunDetail() {
               <thead>
                 <tr>
                   <th>Case</th>
+                  <th>Type</th>
                   <th>Status</th>
-                  <th>Observed</th>
+                  <th>Expected result</th>
+                  <th>Actual result</th>
                   <th>Screenshot</th>
                 </tr>
               </thead>
@@ -133,7 +135,11 @@ export default function TestRunDetail() {
                 {byCategory[cat].map((tc) => (
                   <tr key={tc.id}>
                     <td>{tc.name}</td>
+                    <td>
+                      <span className={`badge ${tc.testType}`}>{tc.testType}</span>
+                    </td>
                     <td>{tc.result ? <span className={`badge ${tc.result.status}`}>{tc.result.status}</span> : "—"}</td>
+                    <td>{tc.expectation ?? "—"}</td>
                     <td>{tc.result?.actual ?? "—"}</td>
                     <td>
                       {tc.result?.screenshotPath ? (
@@ -164,6 +170,7 @@ export default function TestRunDetail() {
               <tr>
                 <th>Case</th>
                 <th>Status</th>
+                <th>Expected result</th>
                 <th>Concurrency</th>
                 <th>Requests</th>
                 <th>Error rate</th>
@@ -176,6 +183,7 @@ export default function TestRunDetail() {
                 <tr key={tc.id}>
                   <td>{tc.name}</td>
                   <td>{tc.result ? <span className={`badge ${tc.result.status}`}>{tc.result.status}</span> : "—"}</td>
+                  <td>{tc.expectation ?? "—"}</td>
                   <td>{tc.stressMetric?.concurrency ?? "—"}</td>
                   <td>{tc.stressMetric?.totalRequests ?? "—"}</td>
                   <td>
@@ -198,6 +206,7 @@ export default function TestRunDetail() {
               <tr>
                 <th>Case</th>
                 <th>Status</th>
+                <th>Expected result</th>
                 <th>DOMContentLoaded</th>
                 <th>Load event</th>
                 <th>Resources</th>
@@ -209,6 +218,7 @@ export default function TestRunDetail() {
                 <tr key={tc.id}>
                   <td>{tc.name}</td>
                   <td>{tc.result ? <span className={`badge ${tc.result.status}`}>{tc.result.status}</span> : "—"}</td>
+                  <td>{tc.expectation ?? "—"}</td>
                   <td>{tc.performanceMetric ? `${tc.performanceMetric.domContentLoadedMs}ms` : "—"}</td>
                   <td>{tc.performanceMetric ? `${tc.performanceMetric.loadEventMs}ms` : "—"}</td>
                   <td>{tc.performanceMetric?.resourceCount ?? "—"}</td>
@@ -229,7 +239,12 @@ export default function TestRunDetail() {
                 <strong>{tc.name}</strong>{" "}
                 {tc.result ? <span className={`badge ${tc.result.status}`}>{tc.result.status}</span> : null}
               </p>
-              <p style={{ color: "#59636e", fontSize: 13 }}>{tc.result?.actual}</p>
+              <p style={{ color: "#59636e", fontSize: 13 }}>
+                <strong>Expected:</strong> {tc.expectation ?? "—"}
+              </p>
+              <p style={{ color: "#59636e", fontSize: 13 }}>
+                <strong>Actual:</strong> {tc.result?.actual}
+              </p>
               {tc.flowStepResults?.length ? (
                 <table>
                   <thead>

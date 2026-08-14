@@ -13,6 +13,7 @@ export function generateStressTests(modules: DetectedModule[]): GeneratedTestCas
       description: `Fire ${STRESS_CONCURRENCY} concurrent requests at ${page.url} and measure error rate and latency under load.`,
       moduleName: page.name,
       expectation: "Error rate should stay low (<10%) and the server should not return 5xx errors under this load.",
+      testType: "positive",
     });
   }
 
@@ -25,6 +26,7 @@ export function generateStressTests(modules: DetectedModule[]): GeneratedTestCas
       moduleName: form.name,
       expectation:
         "Error rate should stay low (<10%); repeated concurrent submissions should be handled consistently (accepted, rate-limited, or deduplicated) without server errors.",
+      testType: "positive",
     });
   }
 

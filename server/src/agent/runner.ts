@@ -206,6 +206,8 @@ export async function runTestRun(
           name: tc.name,
           description: tc.description,
           inputJson: tc.input ? JSON.stringify(tc.input) : null,
+          expectation: tc.expectation,
+          testType: tc.testType,
         },
       });
 
@@ -309,6 +311,8 @@ export async function runTestRun(
           category: "flow",
           name: `Flow: ${flow.label}`,
           description: `Multi-step flow with ${flow.steps.length} step(s), covering integration/system/functional/UAT-style checks.`,
+          expectation: `All ${flow.steps.length} step(s) of the flow should complete successfully, in order.`,
+          testType: "positive",
         },
       });
 
