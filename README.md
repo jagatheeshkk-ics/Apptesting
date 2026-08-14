@@ -128,6 +128,20 @@ Flow once enabled:
 3. Every login after that first successful verification is just email +
    password — no extra step.
 
+Session lifetime, once signed in:
+- **30-minute idle timeout.** The session cookie carries a 30-minute
+  expiry that's refreshed on every authenticated request (server side,
+  `server/src/auth/gate.ts`), and the dashboard independently starts its
+  own 30-minute timer on mount that resets on mouse/keyboard/touch/scroll
+  activity (`web/src/App.tsx`) — so 30 minutes with no activity signs the
+  user out and returns them to the login screen with an explanatory
+  message, even if a background poll (e.g. a running test's status check)
+  would otherwise have kept the server-side session alive.
+- **Signed out on browser close.** The session cookie has no `Max-Age` —
+  it's a browser-session cookie, so fully closing the browser (not just
+  the tab) drops it, and the next visit needs a fresh login regardless of
+  the 30-minute window.
+
 Required when `AUTH_ENABLED=true`:
 - `AUTH_SECRET` — a long random string used to sign session cookies. The
   server refuses to start with `AUTH_ENABLED=true` and no `AUTH_SECRET`.

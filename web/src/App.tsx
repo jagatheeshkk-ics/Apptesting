@@ -33,8 +33,15 @@ const PAGE_PATHS: Record<PageKey, string> = {
 
 const ALL_PAGES = Object.keys(PAGE_LABELS) as PageKey[];
 
+// Mirrors the server's sliding session window (server/src/auth/session.ts) —
+// signs the user out client-side after this much time with no mouse/
+// keyboard/touch activity, regardless of any background API polling.
+const IDLE_LIMIT_MS = 30 * 60 * 1000;
+const ACTIVITY_EVENTS = ["mousemove", "mousedown", "keydown", "scroll", "touchstart", "click"] as const;
+
 export default function App() {
   const [auth, setAuth] = useState<AuthState>({ status: "checking" });
+  const [signOutNotice, setSignOutNotice] = useState<string | null>(null);
 
   useEffect(() => {
     api
@@ -56,14 +63,51 @@ export default function App() {
       .catch(() => setAuth({ status: "disabled" }));
   }, []);
 
+  useEffect(() => {
+    if (auth.status !== "signed-in") return;
+
+    let timer: ReturnType<typeof setTimeout>;
+    let lastReset = 0;
+
+    const signOutForIdle = () => {
+      api.logout().catch(() => {});
+      setSignOutNotice("You were signed out after 30 minutes of inactivity — please sign in again.");
+      setAuth({ status: "signed-out" });
+    };
+
+    const resetTimer = () => {
+      const now = Date.now();
+      if (now - lastReset < 5000) return; // throttle: no need to re-arm on every mousemove tick
+      lastReset = now;
+      clearTimeout(timer);
+      timer = setTimeout(signOutForIdle, IDLE_LIMIT_MS);
+    };
+
+    resetTimer();
+    ACTIVITY_EVENTS.forEach((evt) => window.addEventListener(evt, resetTimer, { passive: true }));
+    return () => {
+      clearTimeout(timer);
+      ACTIVITY_EVENTS.forEach((evt) => window.removeEventListener(evt, resetTimer));
+    };
+  }, [auth.status]);
+
   async function onLogout() {
     await api.logout();
+    setSignOutNotice(null);
     setAuth({ status: "signed-out" });
   }
 
   if (auth.status === "checking") return null;
   if (auth.status === "signed-out") {
-    return <Login onAuthenticated={(user) => setAuth({ status: "signed-in", user })} />;
+    return (
+      <Login
+        initialNotice={signOutNotice}
+        onAuthenticated={(user) => {
+          setSignOutNotice(null);
+          setAuth({ status: "signed-in", user });
+        }}
+      />
+    );
   }
 
   // No role assigned = unrestricted (matches server-side default).

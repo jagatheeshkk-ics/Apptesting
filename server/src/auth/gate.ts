@@ -1,6 +1,6 @@
 import { FastifyInstance } from "fastify";
 import { prisma } from "../db.js";
-import { SESSION_COOKIE, verifySessionToken } from "./session.js";
+import { SESSION_COOKIE, createSessionToken, sessionCookieOptions, verifySessionToken } from "./session.js";
 import { PageKey } from "../access/pages.js";
 
 // Paths reachable without a session even when AUTH_ENABLED=true.
@@ -62,6 +62,10 @@ export function registerAuthGate(app: FastifyInstance) {
     if (!userId) {
       return reply.code(401).send({ error: "authentication required" });
     }
+
+    // Sliding idle timeout: every authenticated request extends the
+    // 30-minute window, so it only expires after genuine inactivity.
+    reply.setCookie(SESSION_COOKIE, createSessionToken(userId), sessionCookieOptions());
 
     const requiredPage = matchRule(req.method, req.url);
     if (!requiredPage) return;
