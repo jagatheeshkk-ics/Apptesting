@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ALL_TEST_CATEGORIES, Account, AnalyzedModule, Project, TEST_CATEGORY_LABELS, TestCategory, api } from "../api.js";
+import { ALL_TEST_CATEGORIES, AnalyzedModule, Project, TEST_CATEGORY_LABELS, TestCategory, api } from "../api.js";
 
 interface EditableModule {
   name: string;
@@ -10,10 +10,8 @@ interface EditableModule {
 }
 
 export default function NewTestRun() {
-  const [accounts, setAccounts] = useState<Account[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [targetUrl, setTargetUrl] = useState("");
-  const [accountId, setAccountId] = useState("");
   const [projectId, setProjectId] = useState("");
   const [selectedCategories, setSelectedCategories] = useState<Set<TestCategory>>(new Set(ALL_TEST_CATEGORIES));
   const [quickMode, setQuickMode] = useState(false);
@@ -34,18 +32,8 @@ export default function NewTestRun() {
   const [accountLabel, setAccountLabel] = useState("");
 
   useEffect(() => {
-    api.listAccounts().then(setAccounts).catch(() => {});
     api.listProjects().then(setProjects).catch(() => {});
   }, []);
-
-  function onAccountChange(id: string) {
-    setAccountId(id);
-    if (id) setShowLoginPrompt(false);
-    if (!projectId) {
-      const account = accounts.find((a) => a.id === id);
-      if (account?.projectId) setProjectId(account.projectId);
-    }
-  }
 
   function isValidUrl(value: string) {
     try {
@@ -63,15 +51,14 @@ export default function NewTestRun() {
     try {
       const { modules: found, requiresLogin } = await api.analyzeUrl({
         targetUrl,
-        accountId: accountId || undefined,
-        username: !accountId && loginUsername ? loginUsername : undefined,
-        password: !accountId && loginPassword ? loginPassword : undefined,
+        username: loginUsername || undefined,
+        password: loginPassword || undefined,
       });
       setModules(
         found.map((m: AnalyzedModule) => ({ name: m.name, url: m.url, type: m.type, stories: [...m.userStories] })),
       );
       setAnalyzedUrl(targetUrl);
-      if (requiresLogin && !accountId) setShowLoginPrompt(true);
+      if (requiresLogin) setShowLoginPrompt(true);
     } catch (err) {
       setAnalyzeError((err as Error).message);
     } finally {
@@ -128,11 +115,10 @@ export default function NewTestRun() {
       const moduleStories: Record<string, string[]> = {};
       for (const m of modules) moduleStories[m.name] = m.stories;
 
-      const useAdHocLogin = !accountId && showLoginPrompt && loginUsername && loginPassword;
+      const useAdHocLogin = showLoginPrompt && loginUsername && loginPassword;
 
       const run = await api.createTestRun({
         targetUrl,
-        accountId: accountId || undefined,
         projectId: projectId || undefined,
         mode: quickMode ? "quick" : "full",
         enabledCategories: Array.from(selectedCategories),
@@ -175,7 +161,7 @@ export default function NewTestRun() {
           {analyzing && <p style={{ color: "#59636e" }}>Analyzing the application…</p>}
           {analyzeError && <p style={{ color: "#cf222e" }}>Could not analyze this URL: {analyzeError}</p>}
 
-          {showLoginPrompt && !accountId && (
+          {showLoginPrompt && (
             <div className="form-row" style={{ border: "1px solid #d4a72c", background: "#fff8e6", borderRadius: 8, padding: 12 }}>
               <label>This URL requires a login to test beyond the login page</label>
               <p style={{ margin: "0 0 8px", color: "#59636e", fontSize: 13 }}>
@@ -257,17 +243,6 @@ export default function NewTestRun() {
             </div>
           )}
 
-          <div className="form-row">
-            <label>Login account (optional)</label>
-            <select value={accountId} onChange={(e) => onAccountChange(e.target.value)}>
-              <option value="">None — test anonymously</option>
-              {accounts.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.label} ({a.role ?? "no role"})
-                </option>
-              ))}
-            </select>
-          </div>
           <div className="form-row">
             <label>Project (optional — used to consolidate test case counts)</label>
             <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
