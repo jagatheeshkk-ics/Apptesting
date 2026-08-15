@@ -59,6 +59,16 @@ export const TEST_CATEGORY_LABELS: Record<TestCategory, string> = {
 
 export const ALL_TEST_CATEGORIES = Object.keys(TEST_CATEGORY_LABELS) as TestCategory[];
 
+// Some apps give several distinct pages the same generic <title> (e.g.
+// every page titled after the site itself), so a module's name alone
+// isn't a reliable identity — two modules with the same name but
+// different URLs are different modules. Anywhere user stories are keyed
+// by module for lookup/storage, key on this composite instead of name
+// alone, or one module's data silently overwrites the other's.
+export function moduleKey(name: string, url: string): string {
+  return `${name}::${url}`;
+}
+
 export type TestType = "positive" | "negative";
 
 export interface GeneratedTestCase {

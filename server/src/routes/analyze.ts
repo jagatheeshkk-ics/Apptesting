@@ -3,11 +3,16 @@ import { prisma } from "../db.js";
 import { crawlAndIdentifyModules, looksLikeLoginForm } from "../agent/crawler.js";
 import { generateUserStories } from "../agent/userStoryGenerator.js";
 import { generateStoryFlows } from "../agent/storyFlowGenerator.js";
-import { DetectedField, DetectedModule } from "../types.js";
+import { DetectedField, DetectedModule, moduleKey } from "../types.js";
 
-async function previousStoriesFor(targetUrl: string, moduleName: string): Promise<string[]> {
+// Matches on name AND url, not name alone — some apps give several
+// distinct pages the same generic <title> (e.g. every page titled after
+// the site itself), and matching by name only would incorrectly pull one
+// page's stories onto an unrelated page that just happens to share that
+// title.
+async function previousStoriesFor(targetUrl: string, moduleName: string, moduleUrl: string): Promise<string[]> {
   const previous = await prisma.module.findFirst({
-    where: { name: moduleName, testRun: { targetUrl } },
+    where: { name: moduleName, url: moduleUrl, testRun: { targetUrl } },
     orderBy: { testRun: { startedAt: "desc" } },
   });
   return previous?.userStoriesJson ? (JSON.parse(previous.userStoriesJson) as string[]) : [];
@@ -50,7 +55,7 @@ export async function analyzeRoutes(app: FastifyInstance) {
     try {
       const modules = await Promise.all(
         crawl.modules.map(async (m) => {
-          const userStories = await previousStoriesFor(body.targetUrl!, m.name);
+          const userStories = await previousStoriesFor(body.targetUrl!, m.name, m.url);
           return {
             name: m.name,
             url: m.url,
@@ -91,7 +96,10 @@ export async function analyzeRoutes(app: FastifyInstance) {
     // Google's free tier allows only a handful of requests per minute —
     // firing them all at once guarantees most get rate-limited.
     for (const m of body.modules) {
-      userStories[m.name] = await generateUserStories(m as DetectedModule);
+      // Keyed by name+url, not name alone — some apps give several
+      // distinct pages the same generic <title>, and keying by name only
+      // would let one module's stories silently overwrite another's.
+      userStories[moduleKey(m.name, m.url)] = await generateUserStories(m as DetectedModule);
     }
     return { userStories };
   });

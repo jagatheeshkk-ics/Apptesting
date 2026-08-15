@@ -5,12 +5,16 @@ a login account), and the agent will:
 
 1. **Analyze the URL** — as soon as you enter one and move on, the agent
    crawls the application and identifies its modules (pages, forms, fields),
-   shown right under the URL field. Each module's user stories are
-   auto-populated **only** if that module was tested before (a cheap DB
-   lookup against the most recent prior run for the same URL, no AI call);
-   otherwise the story list starts empty for you to write your own, or draft
-   with the **"Auto-generate user stories"** button — a deliberate, explicit
-   action, so entering a URL never fires a burst of AI calls on its own.
+   shown right under the URL field. A module's user stories are only
+   auto-populated from a prior run (a cheap DB lookup against the most
+   recent prior run for the same module — matched by name **and** URL, since
+   some apps give several distinct pages the same generic title — no AI
+   call) when you check **"Auto-fill stories saved from a previous test run
+   of the same module"**, off by default; otherwise the story list starts
+   empty for you to write your own, or draft with the **"Auto-generate user
+   stories"** button — a deliberate, explicit action, so entering a URL
+   never fires a burst of AI calls, or silently reuses old stories, on its
+   own.
    Story drafting uses the free Gemini API when `GEMINI_API_KEY` is set,
    falling back to simple templates otherwise (still fully editable either
    way, and the button only targets modules that don't already have

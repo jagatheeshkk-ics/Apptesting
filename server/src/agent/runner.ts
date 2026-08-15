@@ -19,7 +19,7 @@ import { executeFlow, FlowStepDef } from "./flowExecutor.js";
 import { generateStoryFlows } from "./storyFlowGenerator.js";
 import { computeRegressions } from "../analysis/regression.js";
 import { buildHtmlReport } from "../report/reportBuilder.js";
-import { DetectedModule, GeneratedTestCase, TestCategory, TestType } from "../types.js";
+import { DetectedModule, GeneratedTestCase, TestCategory, TestType, moduleKey } from "../types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const SCREENSHOT_DIR = path.join(__dirname, "..", "..", "storage", "screenshots");
@@ -141,13 +141,19 @@ export async function runTestRun(
     const moduleRecords = [];
     for (const m of modules) {
       // Prefer stories the user reviewed/edited on the New Test Run page
-      // (matched by module name); fall back to whatever was saved from the
-      // most recent prior run against this same target/module (e.g. the
-      // run was started via the API directly, bypassing that preview).
-      let stories = opts?.moduleStories?.[m.name];
+      // (matched by module name+url, since some apps give several distinct
+      // pages the same generic <title>); fall back to whatever was saved
+      // from the most recent prior run against this same target/module
+      // (e.g. the run was started via the API directly, bypassing that
+      // preview).
+      let stories = opts?.moduleStories?.[moduleKey(m.name, m.url)];
       if (!stories) {
+        // Match on name AND url — some apps give several distinct pages
+        // the same generic <title>, and matching by name alone would pull
+        // one page's stories onto an unrelated page that just happens to
+        // share that title.
         const previous = await prisma.module.findFirst({
-          where: { name: m.name, testRun: { targetUrl: run.targetUrl } },
+          where: { name: m.name, url: m.url, testRun: { targetUrl: run.targetUrl } },
           orderBy: { testRun: { startedAt: "desc" } },
         });
         stories = previous?.userStoriesJson ? (JSON.parse(previous.userStoriesJson) as string[]) : [];

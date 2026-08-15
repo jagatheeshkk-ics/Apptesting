@@ -9,6 +9,7 @@ import {
   TEST_CATEGORY_LABELS,
   TestCategory,
   api,
+  moduleKey,
 } from "../api.js";
 
 interface EditableModule {
@@ -31,6 +32,8 @@ export default function NewTestRun() {
   const navigate = useNavigate();
 
   const [modules, setModules] = useState<EditableModule[]>([]);
+  const [lastAnalyzedModules, setLastAnalyzedModules] = useState<AnalyzedModule[] | null>(null);
+  const [autoFillStories, setAutoFillStories] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
   const [analyzedUrl, setAnalyzedUrl] = useState<string | null>(null);
@@ -64,6 +67,17 @@ export default function NewTestRun() {
     }
   }
 
+  function toEditableModules(found: AnalyzedModule[], fill: boolean): EditableModule[] {
+    return found.map((m) => ({
+      name: m.name,
+      url: m.url,
+      type: m.type,
+      fields: m.fields,
+      stories: fill ? [...m.userStories] : [],
+      storiesSource: fill ? m.storiesSource : "none",
+    }));
+  }
+
   async function runAnalyze() {
     if (!isValidUrl(targetUrl) || analyzing) return;
     setAnalyzing(true);
@@ -74,16 +88,8 @@ export default function NewTestRun() {
         username: loginUsername || undefined,
         password: loginPassword || undefined,
       });
-      setModules(
-        found.map((m: AnalyzedModule) => ({
-          name: m.name,
-          url: m.url,
-          type: m.type,
-          fields: m.fields,
-          stories: [...m.userStories],
-          storiesSource: m.storiesSource,
-        })),
-      );
+      setLastAnalyzedModules(found);
+      setModules(toEditableModules(found, autoFillStories));
       setAnalyzedUrl(targetUrl);
       if (requiresLogin) setShowLoginPrompt(true);
     } catch (err) {
@@ -95,6 +101,14 @@ export default function NewTestRun() {
 
   function onUrlBlur() {
     if (targetUrl && targetUrl !== analyzedUrl) runAnalyze();
+  }
+
+  // Re-derives the module list from the last analyze response instead of
+  // re-crawling — flipping this is purely a display choice about whether
+  // to show what's already known, not a reason to re-hit the target site.
+  function onToggleAutoFillStories(checked: boolean) {
+    setAutoFillStories(checked);
+    if (lastAnalyzedModules) setModules(toEditableModules(lastAnalyzedModules, checked));
   }
 
   // Only for modules with no stories yet — those pre-filled from a
@@ -110,9 +124,10 @@ export default function NewTestRun() {
         targets.map((m) => ({ name: m.name, url: m.url, type: m.type, fields: m.fields })),
       );
       setModules((mods) =>
-        mods.map((m) =>
-          userStories[m.name]?.length ? { ...m, stories: userStories[m.name], storiesSource: "ai" } : m,
-        ),
+        mods.map((m) => {
+          const stories = userStories[moduleKey(m.name, m.url)];
+          return stories?.length ? { ...m, stories, storiesSource: "ai" } : m;
+        }),
       );
     } catch (err) {
       setGenerateStoriesError((err as Error).message);
@@ -205,7 +220,7 @@ export default function NewTestRun() {
     }
     try {
       const moduleStories: Record<string, string[]> = {};
-      for (const m of modules) moduleStories[m.name] = m.stories;
+      for (const m of modules) moduleStories[moduleKey(m.name, m.url)] = m.stories;
 
       const useAdHocLogin = showLoginPrompt && loginUsername && loginPassword;
 
@@ -348,6 +363,15 @@ export default function NewTestRun() {
                 <span style={{ fontWeight: 400, color: "#59636e" }}>
                   (write your own, or auto-generate for modules with none yet; these drive what gets tested)
                 </span>
+              </label>
+              <label style={{ display: "block", fontWeight: 400, fontSize: 13, marginBottom: 8 }}>
+                <input
+                  type="checkbox"
+                  checked={autoFillStories}
+                  onChange={(e) => onToggleAutoFillStories(e.target.checked)}
+                  style={{ marginRight: 8 }}
+                />
+                Auto-fill stories saved from a previous test run of the same module
               </label>
               {generateStoriesError && <p style={{ color: "#cf222e", fontSize: 13 }}>{generateStoriesError}</p>}
               {modules.map((m, mi) => (
