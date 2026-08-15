@@ -1,7 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 import { DetectedModule, TestType } from "../types.js";
 import { FlowStepDef } from "./flowExecutor.js";
-import { GEMINI_MODEL, callGeminiWithRetry } from "./geminiModel.js";
+import { GEMINI_MODEL, callGeminiWithRetry, isGeminiDailyQuotaExhausted } from "./geminiModel.js";
 
 let client: GoogleGenAI | null | undefined;
 
@@ -161,14 +161,17 @@ Respond with ONLY a JSON object, no markdown, no code fences, no commentary, in 
 
 // Converts freeform QA scenarios into executable browser test flows via
 // Gemini. Returns null (never throws) when GEMINI_API_KEY isn't configured
-// or the call/parse fails — callers should surface that as a visible error
-// test case rather than silently dropping the tester's scenarios. Returns
-// empty flows/requiredDetails (not null) when testStories is blank, since
-// that's not a failure — there's just nothing to generate.
+// or the call/parse fails, or "daily-quota-exhausted" specifically when
+// Google's free-tier per-day request cap has been hit (a distinct, much
+// more common failure worth a clearer message than a generic one) —
+// callers should surface either as a visible error test case rather than
+// silently dropping the tester's scenarios. Returns empty
+// flows/requiredDetails (not null) when testStories is blank, since that's
+// not a failure — there's just nothing to generate.
 export async function generateStoryFlows(
   testStories: string,
   modules: DetectedModule[],
-): Promise<StoryGenerationResult | null> {
+): Promise<StoryGenerationResult | null | "daily-quota-exhausted"> {
   if (!testStories.trim()) return { flows: [], requiredDetails: [] };
 
   const genAI = getClient();
@@ -200,6 +203,10 @@ export async function generateStoryFlows(
     }
     return { flows, requiredDetails };
   } catch (err) {
+    if (isGeminiDailyQuotaExhausted(err)) {
+      console.error("generateStoryFlows: Gemini daily free-tier quota exhausted for today", err);
+      return "daily-quota-exhausted";
+    }
     console.error("generateStoryFlows: Gemini call failed", err);
     return null;
   }

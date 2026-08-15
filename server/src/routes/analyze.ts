@@ -109,6 +109,12 @@ export async function analyzeRoutes(app: FastifyInstance) {
     if (!body.testStories?.trim()) return { requiredDetails: [] };
 
     const result = await generateStoryFlows(body.testStories, (body.modules ?? []) as DetectedModule[]);
+    if (result === "daily-quota-exhausted") {
+      return reply.code(502).send({
+        error:
+          "Could not analyze the test stories — Gemini's free-tier daily request quota is exhausted for today. It resets after 24 hours, or you can enable billing on your Google AI Studio project to remove the daily cap.",
+      });
+    }
     if (!result) {
       return reply.code(502).send({
         error: "Could not analyze the test stories — the AI call failed or isn't configured. Check server logs.",

@@ -1,6 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import { DetectedModule } from "../types.js";
-import { GEMINI_MODEL, callGeminiWithRetry } from "./geminiModel.js";
+import { GEMINI_MODEL, callGeminiWithRetry, isGeminiDailyQuotaExhausted } from "./geminiModel.js";
 
 let client: GoogleGenAI | null | undefined;
 
@@ -60,7 +60,11 @@ Write 2-4 concise user stories in "As a user, I want to ... so that ..." format,
     }
     return stories;
   } catch (err) {
-    console.error(`generateAIUserStories: Gemini call failed for "${module.name}"`, err);
+    if (isGeminiDailyQuotaExhausted(err)) {
+      console.error(`generateAIUserStories: Gemini daily free-tier quota exhausted for today (module "${module.name}")`);
+    } else {
+      console.error(`generateAIUserStories: Gemini call failed for "${module.name}"`, err);
+    }
     return null;
   }
 }
