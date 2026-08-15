@@ -1,5 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import { DetectedModule } from "../types.js";
+import { GEMINI_MODEL } from "./geminiModel.js";
 
 let client: GoogleGenAI | null | undefined;
 
@@ -45,12 +46,19 @@ Write 2-4 concise user stories in "As a user, I want to ... so that ..." format,
 
   try {
     const response = await genAI.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: GEMINI_MODEL,
       contents: prompt,
       config: { httpOptions: { timeout: 15_000 } },
     });
-    return extractJsonArray(response.text ?? "");
-  } catch {
+    const stories = extractJsonArray(response.text ?? "");
+    if (!stories) {
+      console.error(
+        `generateAIUserStories: no JSON array found in the Gemini response for "${module.name}". Raw response (first 300 chars): ${(response.text ?? "").slice(0, 300)}`,
+      );
+    }
+    return stories;
+  } catch (err) {
+    console.error(`generateAIUserStories: Gemini call failed for "${module.name}"`, err);
     return null;
   }
 }

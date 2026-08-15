@@ -1,6 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 import { DetectedModule, TestType } from "../types.js";
 import { FlowStepDef } from "./flowExecutor.js";
+import { GEMINI_MODEL } from "./geminiModel.js";
 
 let client: GoogleGenAI | null | undefined;
 
@@ -139,7 +140,7 @@ export async function generateStoryFlows(testStories: string, modules: DetectedM
 
   try {
     const response = await genAI.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: GEMINI_MODEL,
       contents: buildPrompt(testStories, modules),
       config: { httpOptions: { timeout: 30_000 } },
     });

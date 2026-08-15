@@ -42,9 +42,15 @@ services:
         sync: false
       - key: SMTP_FROM
         sync: false
-      # Optional — powers AI-drafted user stories on the New Test Run page
-      # (free Gemini API key from aistudio.google.com/apikey). Without it,
-      # stories still get drafted, just from simpler templates — see README
-      # "AI-generated user stories".
+      # Optional — powers AI-drafted user stories and custom test story ->
+      # flow conversion on the New Test Run page (free Gemini API key from
+      # aistudio.google.com/apikey). Without it, user stories still get
+      # drafted from simpler templates — see README "AI-generated user
+      # stories".
       - key: GEMINI_API_KEY
+        sync: false
+      # Optional — overrides the Gemini model ID (default: gemini-flash-latest).
+      # Set this without a code deploy if server logs show a "model ... is
+      # no longer available" error after Google deprecates/renames a model.
+      - key: GEMINI_MODEL
         sync: false
