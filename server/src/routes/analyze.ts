@@ -2,12 +2,26 @@ import { FastifyInstance } from "fastify";
 import { prisma } from "../db.js";
 import { crawlAndIdentifyModules, looksLikeLoginForm } from "../agent/crawler.js";
 import { generateUserStories } from "../agent/userStoryGenerator.js";
+import { generateStoryFlows } from "../agent/storyFlowGenerator.js";
+import { DetectedField, DetectedModule } from "../types.js";
 
-// Crawl-only preview: identifies modules on a URL and generates a starting
-// set of editable user stories for each, without creating a TestRun or
-// running any tests. Used by the "New test run" page so stories can be
-// reviewed/edited before the user commits to a run.
+async function previousStoriesFor(targetUrl: string, moduleName: string): Promise<string[]> {
+  const previous = await prisma.module.findFirst({
+    where: { name: moduleName, testRun: { targetUrl } },
+    orderBy: { testRun: { startedAt: "desc" } },
+  });
+  return previous?.userStoriesJson ? (JSON.parse(previous.userStoriesJson) as string[]) : [];
+}
+
 export async function analyzeRoutes(app: FastifyInstance) {
+  // Crawl-only preview: identifies modules on a URL, without creating a
+  // TestRun or running any tests. Auto-populates each module's user
+  // stories from the most recent prior test run against the same URL (a
+  // cheap DB lookup, no AI call) — otherwise stories are left empty for
+  // the tester to either write themselves or fill in with the
+  // "Auto-generate user stories" button (POST /api/analyze/generate-stories),
+  // which is a separate, explicit action so a URL analyze never silently
+  // fires a burst of AI calls on its own.
   app.post("/api/analyze", async (req, reply) => {
     const body = req.body as { targetUrl?: string; accountId?: string; username?: string; password?: string };
     if (!body.targetUrl) return reply.code(400).send({ error: "targetUrl is required" });
@@ -34,19 +48,19 @@ export async function analyzeRoutes(app: FastifyInstance) {
     }
 
     try {
-      // Sequential, not Promise.all: each module triggers a Gemini call,
-      // and Google's free tier allows only a handful of requests per
-      // minute — firing them all at once guarantees most get rate-limited.
-      const modules = [];
-      for (const m of crawl.modules) {
-        modules.push({
-          name: m.name,
-          url: m.url,
-          type: m.type,
-          fields: m.fields,
-          userStories: await generateUserStories(m),
-        });
-      }
+      const modules = await Promise.all(
+        crawl.modules.map(async (m) => {
+          const userStories = await previousStoriesFor(body.targetUrl!, m.name);
+          return {
+            name: m.name,
+            url: m.url,
+            type: m.type,
+            fields: m.fields,
+            userStories,
+            storiesSource: userStories.length ? ("previous" as const) : ("none" as const),
+          };
+        }),
+      );
 
       // Heuristic: a login form was found (a password field, or the first
       // step of a two-step login — see looksLikeLoginForm) and we weren't
@@ -60,5 +74,46 @@ export async function analyzeRoutes(app: FastifyInstance) {
       await crawl.context.close().catch(() => {});
       await crawl.browser.close().catch(() => {});
     }
+  });
+
+  // Explicit, button-triggered AI story drafting for a set of already-
+  // crawled modules (no re-crawl). Kept separate from POST /api/analyze
+  // so entering a URL never triggers AI calls on its own — only clicking
+  // "Auto-generate user stories" does.
+  app.post("/api/analyze/generate-stories", async (req, reply) => {
+    const body = req.body as {
+      modules?: { name: string; url: string; type: string; fields: DetectedField[] }[];
+    };
+    if (!body.modules?.length) return reply.code(400).send({ error: "modules is required" });
+
+    const userStories: Record<string, string[]> = {};
+    // Sequential, not Promise.all: each module triggers a Gemini call, and
+    // Google's free tier allows only a handful of requests per minute —
+    // firing them all at once guarantees most get rate-limited.
+    for (const m of body.modules) {
+      userStories[m.name] = await generateUserStories(m as DetectedModule);
+    }
+    return { userStories };
+  });
+
+  // Preview-only: for the freeform "Test stories" textarea, asks the AI
+  // whether executing the described scenarios needs any concrete detail
+  // (e.g. a real record ID) it can't infer, without generating/persisting
+  // the actual flow yet. Button-triggered from the New Test Run page —
+  // never fired automatically while the tester is still typing.
+  app.post("/api/analyze/story-requirements", async (req, reply) => {
+    const body = req.body as {
+      testStories?: string;
+      modules?: { name: string; url: string; type: string; fields: DetectedField[] }[];
+    };
+    if (!body.testStories?.trim()) return { requiredDetails: [] };
+
+    const result = await generateStoryFlows(body.testStories, (body.modules ?? []) as DetectedModule[]);
+    if (!result) {
+      return reply.code(502).send({
+        error: "Could not analyze the test stories — the AI call failed or isn't configured. Check server logs.",
+      });
+    }
+    return { requiredDetails: result.requiredDetails };
   });
 }

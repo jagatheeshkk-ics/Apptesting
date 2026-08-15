@@ -19,6 +19,16 @@ export interface StoryFlow {
   steps: FlowStepDef[];
 }
 
+export interface RequiredDetail {
+  key: string;
+  question: string;
+}
+
+export interface StoryGenerationResult {
+  flows: StoryFlow[];
+  requiredDetails: RequiredDetail[];
+}
+
 const VALID_ACTIONS = new Set([
   "navigate",
   "fill",
@@ -60,12 +70,24 @@ function sanitizeFlows(raw: unknown): StoryFlow[] {
   return flows;
 }
 
-function extractJsonArray(text: string): unknown[] | null {
-  const match = text.match(/\[[\s\S]*\]/);
+function sanitizeRequiredDetails(raw: unknown): RequiredDetail[] {
+  if (!Array.isArray(raw)) return [];
+  const details: RequiredDetail[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const v = item as Record<string, unknown>;
+    if (typeof v.key !== "string" || typeof v.question !== "string") continue;
+    details.push({ key: v.key, question: v.question });
+  }
+  return details;
+}
+
+function extractJsonObject(text: string): Record<string, unknown> | null {
+  const match = text.match(/\{[\s\S]*\}/);
   if (!match) return null;
   try {
     const parsed = JSON.parse(match[0]);
-    return Array.isArray(parsed) ? parsed : null;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null;
   } catch {
     return null;
   }
@@ -110,30 +132,44 @@ Rules:
 - Write a one-sentence "expectation" describing what should happen, matching the scenario's intent.
 - If a scenario can't be mapped to the discovered pages/forms, do your best with the closest matching page rather than omitting it.
 
-Respond with ONLY a JSON array, no markdown, no code fences, no commentary, in this exact shape:
-[
-  {
-    "title": "short flow name",
-    "expectation": "one sentence describing the expected outcome",
-    "testType": "positive",
-    "steps": [
-      { "action": "navigate", "value": "https://example.com/login" },
-      { "action": "fill", "selector": "input[name=\\"username\\"]", "value": "someone" },
-      { "action": "click", "selector": "button:has-text(\\"Submit\\")" },
-      { "action": "expectUrlContains", "value": "dashboard" }
-    ]
-  }
-]`;
+Required details: if a scenario references a SPECIFIC concrete piece of data you cannot invent or infer from the page (e.g. a real employee ID, an existing order number, a specific record's name) — as opposed to a generic value you can make up (e.g. a plausible email, a name, "test" text) — do NOT guess it. Instead:
+1. Add an entry to "requiredDetails": { "key": "a_short_snake_case_key", "question": "a plain-English question asking the tester for that value" }.
+2. In the step(s) that need it, use "{{a_short_snake_case_key}}" as the value (literally that placeholder text) instead of a guessed value.
+3. If the scenario text already contains a line answering that detail (e.g. under a heading like "Additional details"), use the given concrete value directly instead of a placeholder, and do not add it to requiredDetails again.
+It's fine for requiredDetails to be empty — most scenarios need no real data lookups.
+
+Respond with ONLY a JSON object, no markdown, no code fences, no commentary, in this exact shape:
+{
+  "requiredDetails": [
+    { "key": "employee_id", "question": "What is a valid employee ID to search for?" }
+  ],
+  "flows": [
+    {
+      "title": "short flow name",
+      "expectation": "one sentence describing the expected outcome",
+      "testType": "positive",
+      "steps": [
+        { "action": "navigate", "value": "https://example.com/login" },
+        { "action": "fill", "selector": "input[name=\\"username\\"]", "value": "someone" },
+        { "action": "click", "selector": "button:has-text(\\"Submit\\")" },
+        { "action": "expectUrlContains", "value": "dashboard" }
+      ]
+    }
+  ]
+}`;
 }
 
 // Converts freeform QA scenarios into executable browser test flows via
 // Gemini. Returns null (never throws) when GEMINI_API_KEY isn't configured
 // or the call/parse fails — callers should surface that as a visible error
 // test case rather than silently dropping the tester's scenarios. Returns
-// an empty array (not null) when testStories is blank, since that's not a
-// failure — there's just nothing to generate.
-export async function generateStoryFlows(testStories: string, modules: DetectedModule[]): Promise<StoryFlow[] | null> {
-  if (!testStories.trim()) return [];
+// empty flows/requiredDetails (not null) when testStories is blank, since
+// that's not a failure — there's just nothing to generate.
+export async function generateStoryFlows(
+  testStories: string,
+  modules: DetectedModule[],
+): Promise<StoryGenerationResult | null> {
+  if (!testStories.trim()) return { flows: [], requiredDetails: [] };
 
   const genAI = getClient();
   if (!genAI) return null;
@@ -147,21 +183,22 @@ export async function generateStoryFlows(testStories: string, modules: DetectedM
       }),
     );
     const text = response.text ?? "";
-    const raw = extractJsonArray(text);
+    const raw = extractJsonObject(text);
     if (!raw) {
       console.error(
-        `generateStoryFlows: no JSON array found in the Gemini response. Raw response (first 500 chars): ${text.slice(0, 500)}`,
+        `generateStoryFlows: no JSON object found in the Gemini response. Raw response (first 500 chars): ${text.slice(0, 500)}`,
       );
       return null;
     }
-    const flows = sanitizeFlows(raw);
-    if (!flows.length) {
+    const flows = sanitizeFlows(raw.flows);
+    const requiredDetails = sanitizeRequiredDetails(raw.requiredDetails);
+    if (!flows.length && !requiredDetails.length) {
       console.error(
-        `generateStoryFlows: Gemini returned a JSON array but none of its entries were valid flows. Parsed: ${JSON.stringify(raw).slice(0, 500)}`,
+        `generateStoryFlows: Gemini returned a JSON object but it had no valid flows or required details. Parsed: ${JSON.stringify(raw).slice(0, 500)}`,
       );
       return null;
     }
-    return flows;
+    return { flows, requiredDetails };
   } catch (err) {
     console.error("generateStoryFlows: Gemini call failed", err);
     return null;

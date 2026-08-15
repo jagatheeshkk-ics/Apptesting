@@ -4,14 +4,19 @@ An AI-agent-driven application testing platform. Give it a URL (and, optionally,
 a login account), and the agent will:
 
 1. **Analyze the URL** — as soon as you enter one and move on, the agent
-   crawls the application, identifies its modules (pages, forms, fields), and
-   drafts a starting set of plain-language user stories for each module —
-   shown right under the URL field for you to edit, remove, or add to before
-   starting the run. Story drafting uses the free Gemini API when
-   `GEMINI_API_KEY` is set, falling back to simple templates otherwise (still fully editable
-   either way). Stories are documentation/traceability attached to each
-   module (shown on the run's detail page too) — they don't get parsed for
-   test steps. What actually drives test generation is the crawled
+   crawls the application and identifies its modules (pages, forms, fields),
+   shown right under the URL field. Each module's user stories are
+   auto-populated **only** if that module was tested before (a cheap DB
+   lookup against the most recent prior run for the same URL, no AI call);
+   otherwise the story list starts empty for you to write your own, or draft
+   with the **"Auto-generate user stories"** button — a deliberate, explicit
+   action, so entering a URL never fires a burst of AI calls on its own.
+   Story drafting uses the free Gemini API when `GEMINI_API_KEY` is set,
+   falling back to simple templates otherwise (still fully editable either
+   way, and the button only targets modules that don't already have
+   stories). Stories are documentation/traceability attached to each module
+   (shown on the run's detail page too) — they don't get parsed for test
+   steps. What actually drives test generation is the crawled
    fields/forms/buttons for each module, filtered down to whichever
    test-type checkboxes you selected. If the URL turns out to be gated
    behind a login (a login form is found and no credentials were given),
@@ -53,9 +58,14 @@ a login account), and the agent will:
      `GEMINI_API_KEY`) converts each one into an executable browser flow —
      navigating, filling fields, clicking, and verifying the described
      outcome — with the same per-step pass/fail and screenshots as test
-     flows. Without `GEMINI_API_KEY` configured, the run instead records one
-     clear error case explaining that the scenarios couldn't be processed,
-     rather than silently skipping them.
+     flows. Click **"Check required details"** before starting the run — if
+     a scenario references a specific real value the AI can't invent (e.g.
+     an actual employee ID or order number), it asks for it via an input
+     field right there instead of guessing; the answer gets folded into the
+     scenario text used to generate the real flow. Without `GEMINI_API_KEY`
+     configured, the run instead records one clear error case explaining
+     that the scenarios couldn't be processed, rather than silently
+     skipping them.
 
    *Not included:* unit testing doesn't fit this architecture — the platform
    only ever sees a target URL from the outside, so there's no source/function

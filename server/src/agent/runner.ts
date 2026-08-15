@@ -16,7 +16,6 @@ import { executePerformanceCase } from "./performanceExecutor.js";
 import { executeCompatibilityCase } from "./compatibilityExecutor.js";
 import { executeAccessibilityCase } from "./accessibilityExecutor.js";
 import { executeFlow, FlowStepDef } from "./flowExecutor.js";
-import { generateUserStories } from "./userStoryGenerator.js";
 import { generateStoryFlows } from "./storyFlowGenerator.js";
 import { computeRegressions } from "../analysis/regression.js";
 import { buildHtmlReport } from "../report/reportBuilder.js";
@@ -136,17 +135,23 @@ export async function runTestRun(
       },
     });
 
-    // Sequential, not Promise.all: each module without pre-reviewed stories
-    // triggers a Gemini call, and Google's free tier allows only a handful
-    // of requests per minute — firing them all at once guarantees most get
-    // rate-limited. One at a time keeps well under that ceiling.
+    // No AI calls here — user stories are only ever AI-drafted via the New
+    // Test Run page's explicit "Auto-generate user stories" button
+    // (POST /api/analyze/generate-stories), never silently during a run.
     const moduleRecords = [];
     for (const m of modules) {
       // Prefer stories the user reviewed/edited on the New Test Run page
-      // (matched by module name); fall back to freshly generated ones for
-      // any module that wasn't part of that preview (e.g. the preview used
-      // a shallower crawl, or the user skipped it).
-      const stories = opts?.moduleStories?.[m.name] ?? (await generateUserStories(m));
+      // (matched by module name); fall back to whatever was saved from the
+      // most recent prior run against this same target/module (e.g. the
+      // run was started via the API directly, bypassing that preview).
+      let stories = opts?.moduleStories?.[m.name];
+      if (!stories) {
+        const previous = await prisma.module.findFirst({
+          where: { name: m.name, testRun: { targetUrl: run.targetUrl } },
+          orderBy: { testRun: { startedAt: "desc" } },
+        });
+        stories = previous?.userStoriesJson ? (JSON.parse(previous.userStoriesJson) as string[]) : [];
+      }
       moduleRecords.push(
         await prisma.module.create({
           data: {
@@ -198,8 +203,14 @@ export async function runTestRun(
         storyFlowsError = process.env.GEMINI_API_KEY
           ? "Could not process the custom test stories — the AI call failed or returned an unexpected format. Try rephrasing the scenarios, or check the server logs."
           : "Could not process the custom test stories — GEMINI_API_KEY is not configured on the server, so natural-language scenarios can't be converted into test steps.";
+      } else if (!generatedStories.flows.length && generatedStories.requiredDetails.length) {
+        // The AI needs specific details it can't infer (a real record ID,
+        // etc.) that weren't answered — normally the New Test Run page
+        // collects these before the run starts; this is the fallback for a
+        // run started without going through that step (e.g. via the API).
+        storyFlowsError = `Could not run the custom test stories — some details are needed first: ${generatedStories.requiredDetails.map((d) => d.question).join(" ")}`;
       } else {
-        storyFlows = generatedStories.map((s) => ({
+        storyFlows = generatedStories.flows.map((s) => ({
           category: "story" as const,
           testFlowId: undefined,
           name: s.title,
