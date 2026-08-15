@@ -24,6 +24,7 @@ export default function NewTestRun() {
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
   const [analyzedUrl, setAnalyzedUrl] = useState<string | null>(null);
   const [draftStory, setDraftStory] = useState<Record<number, string>>({});
+  const [testStories, setTestStories] = useState("");
 
   const [showLoginPrompt, setShowLoginPrompt] = useState(false);
   const [loginUsername, setLoginUsername] = useState("");
@@ -123,6 +124,7 @@ export default function NewTestRun() {
         mode: quickMode ? "quick" : "full",
         enabledCategories: Array.from(selectedCategories),
         moduleStories,
+        testStories: testStories.trim() || undefined,
         username: useAdHocLogin ? loginUsername : undefined,
         password: useAdHocLogin ? loginPassword : undefined,
         saveAsAccount: useAdHocLogin ? saveAsAccount : undefined,
@@ -155,6 +157,24 @@ export default function NewTestRun() {
               value={targetUrl}
               onChange={(e) => setTargetUrl(e.target.value)}
               onBlur={onUrlBlur}
+            />
+          </div>
+
+          <div className="form-row">
+            <label>
+              Test stories (optional){" "}
+              <span style={{ fontWeight: 400, color: "#59636e" }}>
+                — describe scenarios in plain English, the agent will test each one
+              </span>
+            </label>
+            <textarea
+              rows={5}
+              placeholder={
+                'e.g. "Logging in with a valid username and password should reach the dashboard."\n"Logging in with the wrong password should show an error message and stay on the login page."'
+              }
+              value={testStories}
+              onChange={(e) => setTestStories(e.target.value)}
+              style={{ padding: "8px 10px", border: "1px solid #d0d7de", borderRadius: 6, fontSize: 14, fontFamily: "inherit", resize: "vertical" }}
             />
           </div>
 

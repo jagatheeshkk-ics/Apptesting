@@ -27,12 +27,52 @@ export async function buildTestRunXlsx(testRunId: string): Promise<Buffer> {
     compatibility: [],
     accessibility: [],
     flow: [],
+    story: [],
   };
   for (const tc of run.testCases) byCategory[tc.category]?.push(tc);
 
   const wb = new ExcelJS.Workbook();
   wb.creator = "AppTesting Agent";
   wb.created = new Date();
+
+  const addFlowLikeSheet = (sheetName: string, cases: typeof run.testCases) => {
+    if (!cases.length) return;
+    const sheet = wb.addWorksheet(sheetName);
+    sheet.columns = [
+      { header: "Name", key: "flow", width: 34 },
+      { header: "Status", key: "status", width: 10 },
+      { header: "Expected", key: "expected", width: 50 },
+      { header: "Actual", key: "actual", width: 50 },
+      { header: "Step #", key: "step", width: 8 },
+      { header: "Action", key: "action", width: 30 },
+      { header: "Step status", key: "stepStatus", width: 10 },
+      { header: "Detail", key: "detail", width: 50 },
+    ];
+    sheet.getRow(1).font = { bold: true };
+    for (const tc of cases) {
+      if (!tc.flowStepResults.length) {
+        sheet.addRow({
+          flow: tc.name,
+          status: tc.result?.status ?? "—",
+          expected: tc.expectation ?? "—",
+          actual: tc.result?.actual ?? "—",
+        });
+        continue;
+      }
+      for (const s of tc.flowStepResults) {
+        sheet.addRow({
+          flow: tc.name,
+          status: tc.result?.status ?? "—",
+          expected: tc.expectation ?? "—",
+          actual: tc.result?.actual ?? "—",
+          step: s.order + 1,
+          action: s.action,
+          stepStatus: s.status,
+          detail: s.detail,
+        });
+      }
+    }
+  };
 
   const summary = wb.addWorksheet("Summary");
   summary.columns = [
@@ -141,43 +181,8 @@ export async function buildTestRunXlsx(testRunId: string): Promise<Buffer> {
     }
   }
 
-  if (byCategory.flow.length) {
-    const sheet = wb.addWorksheet("Flows");
-    sheet.columns = [
-      { header: "Flow", key: "flow", width: 34 },
-      { header: "Status", key: "status", width: 10 },
-      { header: "Expected", key: "expected", width: 50 },
-      { header: "Actual", key: "actual", width: 50 },
-      { header: "Step #", key: "step", width: 8 },
-      { header: "Action", key: "action", width: 30 },
-      { header: "Step status", key: "stepStatus", width: 10 },
-      { header: "Detail", key: "detail", width: 50 },
-    ];
-    sheet.getRow(1).font = { bold: true };
-    for (const tc of byCategory.flow) {
-      if (!tc.flowStepResults.length) {
-        sheet.addRow({
-          flow: tc.name,
-          status: tc.result?.status ?? "—",
-          expected: tc.expectation ?? "—",
-          actual: tc.result?.actual ?? "—",
-        });
-        continue;
-      }
-      for (const s of tc.flowStepResults) {
-        sheet.addRow({
-          flow: tc.name,
-          status: tc.result?.status ?? "—",
-          expected: tc.expectation ?? "—",
-          actual: tc.result?.actual ?? "—",
-          step: s.order + 1,
-          action: s.action,
-          stepStatus: s.status,
-          detail: s.detail,
-        });
-      }
-    }
-  }
+  addFlowLikeSheet("Flows", byCategory.flow);
+  addFlowLikeSheet("Custom stories", byCategory.story);
 
   const buffer = await wb.xlsx.writeBuffer();
   return Buffer.from(buffer);

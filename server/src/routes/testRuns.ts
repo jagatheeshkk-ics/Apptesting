@@ -14,6 +14,7 @@ const TEST_CATEGORIES: TestCategory[] = [
   "compatibility",
   "accessibility",
   "flow",
+  "story",
 ];
 
 function isTestCategory(value: unknown): value is TestCategory {
@@ -84,6 +85,9 @@ export async function testRunRoutes(app: FastifyInstance) {
       mode?: "full" | "quick";
       enabledCategories?: unknown;
       moduleStories?: Record<string, string[]>;
+      // Freeform QA scenarios in plain English, typed on the New Test Run
+      // page — converted into executable test flows by the AI generator.
+      testStories?: string;
       // Ad-hoc login credentials for this target URL, used when the URL was
       // detected as login-gated (POST /api/analyze -> requiresLogin) and no
       // existing Account was picked. Not persisted on the TestRun itself —
@@ -139,7 +143,11 @@ export async function testRunRoutes(app: FastifyInstance) {
 
     // fire-and-forget; the run progresses asynchronously and the UI polls status
     const adHocCredentials = accountId ? undefined : { username: body.username, password: body.password };
-    runTestRun(run.id, { moduleStories: body.moduleStories, ...adHocCredentials }).catch((err) => {
+    runTestRun(run.id, {
+      moduleStories: body.moduleStories,
+      testStories: body.testStories,
+      ...adHocCredentials,
+    }).catch((err) => {
       app.log.error(err, `test run ${run.id} failed`);
     });
 

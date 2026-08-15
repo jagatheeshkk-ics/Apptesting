@@ -41,6 +41,7 @@ export async function buildHtmlReport(testRunId: string, reportDir: string, scre
     compatibility: [],
     accessibility: [],
     flow: [],
+    story: [],
   };
   for (const tc of run.testCases) byCategory[tc.category]?.push(tc);
 
@@ -128,7 +129,7 @@ export async function buildHtmlReport(testRunId: string, reportDir: string, scre
       </table>`;
   };
 
-  const flowSectionHtml = (cases: typeof run.testCases) => {
+  const flowSectionHtml = (title: string, cases: typeof run.testCases) => {
     if (!cases.length) return "";
     const blocks = cases
       .map((tc) => {
@@ -158,7 +159,7 @@ export async function buildHtmlReport(testRunId: string, reportDir: string, scre
         </table>`;
       })
       .join("\n");
-    return `<h2>Flow tests (${cases.length})</h2>${blocks}`;
+    return `<h2>${title} (${cases.length})</h2>${blocks}`;
   };
 
   const regressionHtml = () => {
@@ -237,7 +238,8 @@ export async function buildHtmlReport(testRunId: string, reportDir: string, scre
   ${performanceSectionHtml(byCategory.performance)}
   ${sectionHtml("Compatibility tests", byCategory.compatibility)}
   ${sectionHtml("Accessibility tests", byCategory.accessibility)}
-  ${flowSectionHtml(byCategory.flow)}
+  ${flowSectionHtml("Flow tests", byCategory.flow)}
+  ${flowSectionHtml("Custom test stories", byCategory.story)}
 </body>
 </html>`;
 

@@ -47,6 +47,15 @@ a login account), and the agent will:
      named multi-step journey (e.g. login → add to cart → checkout → expect
      confirmation) once; it then runs automatically as part of any test run
      against a matching target URL, with per-step pass/fail and screenshots.
+   - **Custom test stories** — a free-text box on the New Test Run page where
+     you can describe scenarios in plain English (e.g. "Logging in with the
+     wrong password should show an error message"); the AI (requires
+     `GEMINI_API_KEY`) converts each one into an executable browser flow —
+     navigating, filling fields, clicking, and verifying the described
+     outcome — with the same per-step pass/fail and screenshots as test
+     flows. Without `GEMINI_API_KEY` configured, the run instead records one
+     clear error case explaining that the scenarios couldn't be processed,
+     rather than silently skipping them.
 
    *Not included:* unit testing doesn't fit this architecture — the platform
    only ever sees a target URL from the outside, so there's no source/function

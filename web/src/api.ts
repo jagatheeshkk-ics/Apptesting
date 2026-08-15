@@ -131,7 +131,8 @@ export type TestCategory =
   | "performance"
   | "compatibility"
   | "accessibility"
-  | "flow";
+  | "flow"
+  | "story";
 
 export const TEST_CATEGORY_LABELS: Record<TestCategory, string> = {
   smoke: "Smoke",
@@ -142,6 +143,7 @@ export const TEST_CATEGORY_LABELS: Record<TestCategory, string> = {
   compatibility: "Compatibility (viewport)",
   accessibility: "Accessibility",
   flow: "Flows (integration/UAT)",
+  story: "Custom test stories",
 };
 
 export const ALL_TEST_CATEGORIES = Object.keys(TEST_CATEGORY_LABELS) as TestCategory[];
@@ -418,6 +420,7 @@ export const api = {
     mode?: "full" | "quick";
     enabledCategories?: TestCategory[];
     moduleStories?: Record<string, string[]>;
+    testStories?: string;
     username?: string;
     password?: string;
     saveAsAccount?: boolean;
