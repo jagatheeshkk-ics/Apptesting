@@ -15,15 +15,25 @@ function extractRetryDelayMs(err: unknown, fallbackMs: number): number {
   return Number.isNaN(seconds) ? fallbackMs : Math.min(Math.ceil(seconds * 1000) + 1000, 60_000);
 }
 
-// Retries a Gemini call once on a 429 (rate limit), waiting for the
-// server-suggested delay first. Any other error, or a second 429, is
-// rethrown for the caller's existing error handling.
-export async function callGeminiWithRetry<T>(fn: () => Promise<T>): Promise<T> {
-  try {
-    return await fn();
-  } catch (err) {
-    if ((err as { status?: number })?.status !== 429) throw err;
-    await new Promise((resolve) => setTimeout(resolve, extractRetryDelayMs(err, 20_000)));
-    return fn();
+// 429 = rate limited (quota); 503 = Google's own "model is experiencing
+// high demand, usually temporary" overload signal. Both are worth retrying;
+// anything else (bad key, bad model, malformed request) won't be fixed by
+// waiting, so it's rethrown immediately.
+const RETRYABLE_STATUSES = new Set([429, 503]);
+
+// Retries a Gemini call up to twice on a 429/503, waiting for the
+// server-suggested delay on a 429 or a short fixed backoff on a 503. Any
+// other error, or a retryable error on the final attempt, is rethrown for
+// the caller's existing error handling.
+export async function callGeminiWithRetry<T>(fn: () => Promise<T>, maxRetries = 2): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const status = (err as { status?: number })?.status;
+      if (!RETRYABLE_STATUSES.has(status as number) || attempt >= maxRetries) throw err;
+      const delayMs = status === 429 ? extractRetryDelayMs(err, 20_000) : 3_000 * (attempt + 1);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
   }
 }
