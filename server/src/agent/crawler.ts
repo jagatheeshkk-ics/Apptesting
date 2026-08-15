@@ -189,7 +189,6 @@ export async function crawlAndIdentifyModules(opts: CrawlOptions): Promise<Crawl
 
   const origin = new URL(opts.targetUrl).origin;
   const visited = new Set<string>();
-  const queue: { url: string; depth: number }[] = [{ url: opts.targetUrl, depth: 0 }];
   const modules: DetectedModule[] = [];
   let loggedIn = false;
 
@@ -202,6 +201,14 @@ export async function crawlAndIdentifyModules(opts: CrawlOptions): Promise<Crawl
       loggedIn = false;
     }
   }
+
+  // Start crawling from wherever we actually ended up (the authenticated
+  // landing page after a successful login, or a same-URL redirect target)
+  // rather than blindly re-fetching the original pre-login URL — otherwise
+  // a successful login's navigation gets thrown away, the crawl re-visits
+  // the anonymous login screen, and only the login form itself ever gets
+  // discovered/tested even though credentials were provided.
+  const queue: { url: string; depth: number }[] = [{ url: page.url(), depth: 0 }];
 
   while (queue.length && visited.size < maxPages) {
     const { url, depth } = queue.shift()!;
