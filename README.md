@@ -5,16 +5,17 @@ a login account), and the agent will:
 
 1. **Analyze the URL** — as soon as you enter one and move on, the agent
    crawls the application and identifies its modules (pages, forms, fields),
-   shown right under the URL field. A module's user stories are only
-   auto-populated from a prior run (a cheap DB lookup against the most
-   recent prior run for the same module — matched by name **and** URL, since
-   some apps give several distinct pages the same generic title — no AI
-   call) when you check **"Auto-fill stories saved from a previous test run
-   of the same module"**, off by default; otherwise the story list starts
-   empty for you to write your own, or draft with the **"Auto-generate user
-   stories"** button — a deliberate, explicit action, so entering a URL
-   never fires a burst of AI calls, or silently reuses old stories, on its
-   own.
+   shown right under the URL field. Neither a module's user stories nor the
+   freeform "Test stories" text are auto-populated from a prior run by
+   default — that only happens (a cheap DB lookup against the most recent
+   prior run for the same target URL / module — module stories matched by
+   name **and** URL, since some apps give several distinct pages the same
+   generic title — no AI call) when you check **"Auto-fill stories saved
+   from a previous test run of the same URL"**, off by default; otherwise
+   both start empty for you to write your own, or draft module stories with
+   the **"Auto-generate user stories"** button — a deliberate, explicit
+   action, so entering a URL never fires a burst of AI calls, or silently
+   reuses old stories, on its own.
    Story drafting uses the free Gemini API when `GEMINI_API_KEY` is set,
    falling back to simple templates otherwise (still fully editable either
    way, and the button only targets modules that don't already have
@@ -62,11 +63,13 @@ a login account), and the agent will:
      `GEMINI_API_KEY`) converts each one into an executable browser flow —
      navigating, filling fields, clicking, and verifying the described
      outcome — with the same per-step pass/fail and screenshots as test
-     flows. Click **"Check required details"** before starting the run — if
-     a scenario references a specific real value the AI can't invent (e.g.
-     an actual employee ID or order number), it asks for it via an input
-     field right there instead of guessing; the answer gets folded into the
-     scenario text used to generate the real flow. Without `GEMINI_API_KEY`
+     flows. Leaving the text box checks it automatically (no button to
+     click) — if a scenario references a specific real value the AI can't
+     invent (e.g. an actual employee ID or order number), it asks for it via
+     an input field right there instead of guessing; the answer gets folded
+     into the scenario text used to generate the real flow. That check also
+     runs right before a run starts if the text changed since the last
+     automatic check. Without `GEMINI_API_KEY`
      configured, the run instead records one clear error case explaining
      that the scenarios couldn't be processed, rather than silently
      skipping them.
