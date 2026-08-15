@@ -160,6 +160,16 @@ export interface DetectedField {
   options?: string[];
 }
 
+// Some apps give several distinct pages the same generic <title> (e.g.
+// every page titled after the site itself), so a module's name alone isn't
+// a reliable identity — two modules with the same name but different URLs
+// are different modules. Anywhere module story data is keyed for
+// lookup/submission, key on this composite instead of name alone, or one
+// module's data silently overwrites the other's.
+export function moduleKey(name: string, url: string): string {
+  return `${name}::${url}`;
+}
+
 export interface AnalyzedModule {
   name: string;
   url: string;
