@@ -199,7 +199,10 @@ export async function runTestRun(
     let storyFlowsError: string | null = null;
     if (storiesEnabled && opts?.testStories?.trim()) {
       const generatedStories = await generateStoryFlows(opts.testStories, modules);
-      if (generatedStories === null) {
+      if (generatedStories === "daily-quota-exhausted") {
+        storyFlowsError =
+          "Could not process the custom test stories — Gemini's free-tier daily request quota is exhausted for today. It resets after 24 hours, or you can enable billing on your Google AI Studio project to remove the daily cap.";
+      } else if (generatedStories === null) {
         storyFlowsError = process.env.GEMINI_API_KEY
           ? "Could not process the custom test stories — the AI call failed or returned an unexpected format. Try rephrasing the scenarios, or check the server logs."
           : "Could not process the custom test stories — GEMINI_API_KEY is not configured on the server, so natural-language scenarios can't be converted into test steps.";
