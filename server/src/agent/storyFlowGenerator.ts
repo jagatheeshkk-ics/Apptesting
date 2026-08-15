@@ -143,11 +143,24 @@ export async function generateStoryFlows(testStories: string, modules: DetectedM
       contents: buildPrompt(testStories, modules),
       config: { httpOptions: { timeout: 30_000 } },
     });
-    const raw = extractJsonArray(response.text ?? "");
-    if (!raw) return null;
+    const text = response.text ?? "";
+    const raw = extractJsonArray(text);
+    if (!raw) {
+      console.error(
+        `generateStoryFlows: no JSON array found in the Gemini response. Raw response (first 500 chars): ${text.slice(0, 500)}`,
+      );
+      return null;
+    }
     const flows = sanitizeFlows(raw);
-    return flows.length ? flows : null;
-  } catch {
+    if (!flows.length) {
+      console.error(
+        `generateStoryFlows: Gemini returned a JSON array but none of its entries were valid flows. Parsed: ${JSON.stringify(raw).slice(0, 500)}`,
+      );
+      return null;
+    }
+    return flows;
+  } catch (err) {
+    console.error("generateStoryFlows: Gemini call failed", err);
     return null;
   }
 }
