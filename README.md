@@ -219,10 +219,19 @@ var if Google deprecates/renames it again (server logs will show a
 `... is no longer available` error naming the exact problem — no code
 change needed, just set the env var and redeploy). Either way, user
 stories are fully editable before you start a run, and every AI call has a
-timeout with no retries and falls back cleanly on any error (bad key,
-rate limit, network issue, malformed response, deprecated model) — all now
-logged via `console.error` so failures are diagnosable in Render's logs
-instead of failing silently.
+timeout and falls back cleanly on any error (bad key, network issue,
+malformed response, deprecated model) — all now logged via
+`console.error` so failures are diagnosable in Render's logs instead of
+failing silently.
+
+Google's free tier caps requests at a handful per minute, so per-module
+story generation (both the New Test Run page's auto-analyze preview and
+the actual run) dispatches its Gemini calls one at a time rather than all
+at once, and a `429` (rate limited) gets one retry after honoring Google's
+suggested wait — both meant to keep a target with many pages/forms from
+blowing through the quota in one burst. Persistent `429`s past that point
+still fall back cleanly (heuristic templates for user stories; a single
+clear error case for custom test stories) rather than failing the run.
 
 ## Database (Supabase)
 

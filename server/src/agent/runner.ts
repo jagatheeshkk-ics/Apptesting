@@ -136,14 +136,19 @@ export async function runTestRun(
       },
     });
 
-    const moduleRecords = await Promise.all(
-      modules.map(async (m) => {
-        // Prefer stories the user reviewed/edited on the New Test Run page
-        // (matched by module name); fall back to freshly generated ones for
-        // any module that wasn't part of that preview (e.g. the preview
-        // used a shallower crawl, or the user skipped it).
-        const stories = opts?.moduleStories?.[m.name] ?? (await generateUserStories(m));
-        return prisma.module.create({
+    // Sequential, not Promise.all: each module without pre-reviewed stories
+    // triggers a Gemini call, and Google's free tier allows only a handful
+    // of requests per minute — firing them all at once guarantees most get
+    // rate-limited. One at a time keeps well under that ceiling.
+    const moduleRecords = [];
+    for (const m of modules) {
+      // Prefer stories the user reviewed/edited on the New Test Run page
+      // (matched by module name); fall back to freshly generated ones for
+      // any module that wasn't part of that preview (e.g. the preview used
+      // a shallower crawl, or the user skipped it).
+      const stories = opts?.moduleStories?.[m.name] ?? (await generateUserStories(m));
+      moduleRecords.push(
+        await prisma.module.create({
           data: {
             testRunId,
             name: m.name,
@@ -152,9 +157,9 @@ export async function runTestRun(
             fieldsJson: JSON.stringify(m.fields),
             userStoriesJson: JSON.stringify(stories),
           },
-        });
-      }),
-    );
+        }),
+      );
+    }
     const moduleByName = new Map<string, DetectedModule>(modules.map((m) => [m.name, m]));
     const moduleRecordByName = new Map(moduleRecords.map((m) => [m.name, m]));
 

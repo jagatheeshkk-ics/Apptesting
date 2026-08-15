@@ -1,6 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import { DetectedModule } from "../types.js";
-import { GEMINI_MODEL } from "./geminiModel.js";
+import { GEMINI_MODEL, callGeminiWithRetry } from "./geminiModel.js";
 
 let client: GoogleGenAI | null | undefined;
 
@@ -45,11 +45,13 @@ ${fieldSummary || "(none)"}
 Write 2-4 concise user stories in "As a user, I want to ... so that ..." format, covering the module's likely purpose and any validation behavior implied by its required/typed fields. Respond with ONLY a JSON array of strings — no markdown, no explanation, no code fences.`;
 
   try {
-    const response = await genAI.models.generateContent({
-      model: GEMINI_MODEL,
-      contents: prompt,
-      config: { httpOptions: { timeout: 15_000 } },
-    });
+    const response = await callGeminiWithRetry(() =>
+      genAI.models.generateContent({
+        model: GEMINI_MODEL,
+        contents: prompt,
+        config: { httpOptions: { timeout: 15_000 } },
+      }),
+    );
     const stories = extractJsonArray(response.text ?? "");
     if (!stories) {
       console.error(
