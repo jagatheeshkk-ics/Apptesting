@@ -1,12 +1,23 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ALL_TEST_CATEGORIES, AnalyzedModule, Project, TEST_CATEGORY_LABELS, TestCategory, api } from "../api.js";
+import {
+  ALL_TEST_CATEGORIES,
+  AnalyzedModule,
+  DetectedField,
+  Project,
+  RequiredDetail,
+  TEST_CATEGORY_LABELS,
+  TestCategory,
+  api,
+} from "../api.js";
 
 interface EditableModule {
   name: string;
   url: string;
   type: string;
+  fields: DetectedField[];
   stories: string[];
+  storiesSource: "previous" | "none" | "ai";
 }
 
 export default function NewTestRun() {
@@ -24,7 +35,15 @@ export default function NewTestRun() {
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
   const [analyzedUrl, setAnalyzedUrl] = useState<string | null>(null);
   const [draftStory, setDraftStory] = useState<Record<number, string>>({});
+  const [generatingStories, setGeneratingStories] = useState(false);
+  const [generateStoriesError, setGenerateStoriesError] = useState<string | null>(null);
+
   const [testStories, setTestStories] = useState("");
+  const [requiredDetails, setRequiredDetails] = useState<RequiredDetail[]>([]);
+  const [detailAnswers, setDetailAnswers] = useState<Record<string, string>>({});
+  const [checkedStoriesText, setCheckedStoriesText] = useState<string | null>(null);
+  const [checkingRequirements, setCheckingRequirements] = useState(false);
+  const [requirementsError, setRequirementsError] = useState<string | null>(null);
 
   const [showLoginPrompt, setShowLoginPrompt] = useState(false);
   const [loginUsername, setLoginUsername] = useState("");
@@ -56,7 +75,14 @@ export default function NewTestRun() {
         password: loginPassword || undefined,
       });
       setModules(
-        found.map((m: AnalyzedModule) => ({ name: m.name, url: m.url, type: m.type, stories: [...m.userStories] })),
+        found.map((m: AnalyzedModule) => ({
+          name: m.name,
+          url: m.url,
+          type: m.type,
+          fields: m.fields,
+          stories: [...m.userStories],
+          storiesSource: m.storiesSource,
+        })),
       );
       setAnalyzedUrl(targetUrl);
       if (requiresLogin) setShowLoginPrompt(true);
@@ -69,6 +95,53 @@ export default function NewTestRun() {
 
   function onUrlBlur() {
     if (targetUrl && targetUrl !== analyzedUrl) runAnalyze();
+  }
+
+  // Only for modules with no stories yet — those pre-filled from a
+  // previous run, or already hand-typed, are left alone. AI drafting only
+  // ever happens here, from this explicit click.
+  async function generateStories() {
+    const targets = modules.filter((m) => !m.stories.length);
+    if (!targets.length || generatingStories) return;
+    setGeneratingStories(true);
+    setGenerateStoriesError(null);
+    try {
+      const { userStories } = await api.generateModuleStories(
+        targets.map((m) => ({ name: m.name, url: m.url, type: m.type, fields: m.fields })),
+      );
+      setModules((mods) =>
+        mods.map((m) =>
+          userStories[m.name]?.length ? { ...m, stories: userStories[m.name], storiesSource: "ai" } : m,
+        ),
+      );
+    } catch (err) {
+      setGenerateStoriesError((err as Error).message);
+    } finally {
+      setGeneratingStories(false);
+    }
+  }
+
+  async function checkStoryRequirements() {
+    if (!testStories.trim() || checkingRequirements) return;
+    setCheckingRequirements(true);
+    setRequirementsError(null);
+    try {
+      const { requiredDetails: found } = await api.storyRequirements({
+        testStories,
+        modules: modules.map((m) => ({ name: m.name, url: m.url, type: m.type, fields: m.fields })),
+      });
+      setRequiredDetails(found);
+      setDetailAnswers((prev) => {
+        const next: Record<string, string> = {};
+        for (const d of found) next[d.key] = prev[d.key] ?? "";
+        return next;
+      });
+      setCheckedStoriesText(testStories);
+    } catch (err) {
+      setRequirementsError((err as Error).message);
+    } finally {
+      setCheckingRequirements(false);
+    }
   }
 
   function updateStory(moduleIdx: number, storyIdx: number, value: string) {
@@ -103,6 +176,12 @@ export default function NewTestRun() {
     setSelectedCategories((sel) => (sel.size === ALL_TEST_CATEGORIES.length ? new Set() : new Set(ALL_TEST_CATEGORIES)));
   }
 
+  function buildAugmentedTestStories(): string {
+    if (!testStories.trim() || !requiredDetails.length) return testStories;
+    const lines = requiredDetails.map((d) => `- ${d.question}: ${detailAnswers[d.key]?.trim() ?? ""}`);
+    return `${testStories}\n\nAdditional details provided by the tester:\n${lines.join("\n")}`;
+  }
+
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setSubmitting(true);
@@ -111,6 +190,18 @@ export default function NewTestRun() {
       setError("Select at least one type of test to run.");
       setSubmitting(false);
       return;
+    }
+    if (testStories.trim()) {
+      if (checkedStoriesText !== testStories) {
+        setError('Click "Check required details" for your test stories before starting the run — the text has changed since you last checked.');
+        setSubmitting(false);
+        return;
+      }
+      if (requiredDetails.some((d) => !detailAnswers[d.key]?.trim())) {
+        setError("Please answer all the required details below before starting the run.");
+        setSubmitting(false);
+        return;
+      }
     }
     try {
       const moduleStories: Record<string, string[]> = {};
@@ -124,7 +215,7 @@ export default function NewTestRun() {
         mode: quickMode ? "quick" : "full",
         enabledCategories: Array.from(selectedCategories),
         moduleStories,
-        testStories: testStories.trim() || undefined,
+        testStories: buildAugmentedTestStories().trim() || undefined,
         username: useAdHocLogin ? loginUsername : undefined,
         password: useAdHocLogin ? loginPassword : undefined,
         saveAsAccount: useAdHocLogin ? saveAsAccount : undefined,
@@ -142,9 +233,10 @@ export default function NewTestRun() {
     <div>
       <h2>Start a new test run</h2>
       <p>
-        Enter a URL and leave the field — the agent analyzes the application, identifies its modules (pages, forms,
-        fields), and drafts a starting set of user stories for each one, which you can edit or add to below. Pick
-        which types of tests to run, then start.
+        Enter a URL and leave the field — the agent analyzes the application and identifies its modules (pages,
+        forms, fields). Modules tested before auto-fill with their saved user stories; otherwise write your own
+        below or click "Auto-generate user stories" to have the AI draft some. Pick which types of tests to run,
+        then start.
       </p>
       <div className="card">
         <form onSubmit={onSubmit}>
@@ -176,6 +268,29 @@ export default function NewTestRun() {
               onChange={(e) => setTestStories(e.target.value)}
               style={{ padding: "8px 10px", border: "1px solid #d0d7de", borderRadius: 6, fontSize: 14, fontFamily: "inherit", resize: "vertical" }}
             />
+            {!!testStories.trim() && (
+              <button type="button" onClick={checkStoryRequirements} disabled={checkingRequirements} style={{ marginTop: 8, alignSelf: "flex-start" }}>
+                {checkingRequirements ? "Checking…" : "Check required details"}
+              </button>
+            )}
+            {requirementsError && <p style={{ color: "#cf222e", fontSize: 13 }}>{requirementsError}</p>}
+            {checkedStoriesText === testStories && !requiredDetails.length && (
+              <p style={{ color: "#1a7f37", fontSize: 13 }}>No additional details needed — ready to run.</p>
+            )}
+            {!!requiredDetails.length && (
+              <div style={{ border: "1px solid #d0d7de", borderRadius: 8, padding: 12, marginTop: 8 }}>
+                <strong style={{ fontSize: 13 }}>This needs a few details before it can run:</strong>
+                {requiredDetails.map((d) => (
+                  <div className="form-row" key={d.key} style={{ marginTop: 8, marginBottom: 0 }}>
+                    <label style={{ fontWeight: 400 }}>{d.question}</label>
+                    <input
+                      value={detailAnswers[d.key] || ""}
+                      onChange={(e) => setDetailAnswers((a) => ({ ...a, [d.key]: e.target.value }))}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {analyzing && <p style={{ color: "#59636e" }}>Analyzing the application…</p>}
@@ -231,14 +346,19 @@ export default function NewTestRun() {
               <label>
                 User stories by module{" "}
                 <span style={{ fontWeight: 400, color: "#59636e" }}>
-                  (auto-drafted — edit, remove, or add your own; these drive what gets tested)
+                  (write your own, or auto-generate for modules with none yet; these drive what gets tested)
                 </span>
               </label>
+              {generateStoriesError && <p style={{ color: "#cf222e", fontSize: 13 }}>{generateStoriesError}</p>}
               {modules.map((m, mi) => (
                 <div key={m.name} style={{ border: "1px solid #d0d7de", borderRadius: 8, padding: 12, marginBottom: 10 }}>
                   <strong>
                     {m.name} <span style={{ fontWeight: 400, color: "#59636e" }}>({m.type})</span>
                   </strong>
+                  {m.storiesSource === "previous" && (
+                    <span style={{ marginLeft: 8, fontSize: 12, color: "#59636e" }}>(from a previous test run)</span>
+                  )}
+                  {m.storiesSource === "ai" && <span style={{ marginLeft: 8, fontSize: 12, color: "#59636e" }}>(AI-generated)</span>}
                   <ul style={{ listStyle: "none", padding: 0, margin: "8px 0" }}>
                     {m.stories.map((s, si) => (
                       <li key={si} style={{ display: "flex", gap: 6, marginBottom: 6 }}>
@@ -264,6 +384,13 @@ export default function NewTestRun() {
               ))}
               <button type="button" onClick={runAnalyze} disabled={analyzing}>
                 Re-analyze URL
+              </button>{" "}
+              <button
+                type="button"
+                onClick={generateStories}
+                disabled={generatingStories || !modules.some((m) => !m.stories.length)}
+              >
+                {generatingStories ? "Generating…" : "Auto-generate user stories"}
               </button>
             </div>
           )}
