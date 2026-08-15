@@ -114,6 +114,19 @@ const PASSWORD_FIELD_SELECTOR = 'input[type="password"]';
 const SUBMIT_SELECTOR =
   'button[type="submit"], input[type="submit"], button:has-text("Log in"), button:has-text("Sign in"), button:has-text("Next"), button:has-text("Continue")';
 
+// Collapses URL variants that point at the same page (trailing slash,
+// fragment) to one canonical string, so the same page reached via two
+// differently-formatted links doesn't get crawled — and its modules
+// discovered — twice.
+function normalizeUrl(raw: string): string {
+  const u = new URL(raw);
+  u.hash = "";
+  if (u.pathname.length > 1 && u.pathname.endsWith("/")) {
+    u.pathname = u.pathname.slice(0, -1);
+  }
+  return u.toString();
+}
+
 async function findField(page: Page, selectors: string[]) {
   for (const sel of selectors) {
     const el = page.locator(sel).first();
@@ -208,7 +221,7 @@ export async function crawlAndIdentifyModules(opts: CrawlOptions): Promise<Crawl
   // a successful login's navigation gets thrown away, the crawl re-visits
   // the anonymous login screen, and only the login form itself ever gets
   // discovered/tested even though credentials were provided.
-  const queue: { url: string; depth: number }[] = [{ url: page.url(), depth: 0 }];
+  const queue: { url: string; depth: number }[] = [{ url: normalizeUrl(page.url()), depth: 0 }];
 
   while (queue.length && visited.size < maxPages) {
     const { url, depth } = queue.shift()!;
@@ -255,8 +268,9 @@ export async function crawlAndIdentifyModules(opts: CrawlOptions): Promise<Crawl
       for (const link of links) {
         try {
           const u = new URL(link);
-          if (u.origin === origin && !visited.has(u.toString()) && !u.hash) {
-            queue.push({ url: u.toString(), depth: depth + 1 });
+          if (u.origin === origin && !u.hash) {
+            const normalized = normalizeUrl(u.toString());
+            if (!visited.has(normalized)) queue.push({ url: normalized, depth: depth + 1 });
           }
         } catch {
           // ignore malformed links
