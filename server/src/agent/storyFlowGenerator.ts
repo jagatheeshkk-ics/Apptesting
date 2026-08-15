@@ -1,7 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 import { DetectedModule, TestType } from "../types.js";
 import { FlowStepDef } from "./flowExecutor.js";
-import { GEMINI_MODEL } from "./geminiModel.js";
+import { GEMINI_MODEL, callGeminiWithRetry } from "./geminiModel.js";
 
 let client: GoogleGenAI | null | undefined;
 
@@ -139,11 +139,13 @@ export async function generateStoryFlows(testStories: string, modules: DetectedM
   if (!genAI) return null;
 
   try {
-    const response = await genAI.models.generateContent({
-      model: GEMINI_MODEL,
-      contents: buildPrompt(testStories, modules),
-      config: { httpOptions: { timeout: 30_000 } },
-    });
+    const response = await callGeminiWithRetry(() =>
+      genAI.models.generateContent({
+        model: GEMINI_MODEL,
+        contents: buildPrompt(testStories, modules),
+        config: { httpOptions: { timeout: 30_000 } },
+      }),
+    );
     const text = response.text ?? "";
     const raw = extractJsonArray(text);
     if (!raw) {

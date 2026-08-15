@@ -34,15 +34,19 @@ export async function analyzeRoutes(app: FastifyInstance) {
     }
 
     try {
-      const modules = await Promise.all(
-        crawl.modules.map(async (m) => ({
+      // Sequential, not Promise.all: each module triggers a Gemini call,
+      // and Google's free tier allows only a handful of requests per
+      // minute — firing them all at once guarantees most get rate-limited.
+      const modules = [];
+      for (const m of crawl.modules) {
+        modules.push({
           name: m.name,
           url: m.url,
           type: m.type,
           fields: m.fields,
           userStories: await generateUserStories(m),
-        })),
-      );
+        });
+      }
 
       // Heuristic: a login form was found (a password field, or the first
       // step of a two-step login — see looksLikeLoginForm) and we weren't
