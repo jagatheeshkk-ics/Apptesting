@@ -202,17 +202,27 @@ those dropdowns for users permitted on the page using the dropdown but
 not on the page that owns that data. Mutations on those same resources
 (create/edit/delete) stay gated as normal.
 
-### AI-generated user stories
+### AI-generated user stories and custom test stories
 
 Set `GEMINI_API_KEY` (a free API key from [Google AI Studio](https://aistudio.google.com/apikey))
 to have the New Test Run page's user-story drafts written by Gemini
-(`gemini-2.5-flash`) instead of the built-in templates. Without a
-key, story drafting still works — it just uses the simpler templates in
-`server/src/agent/userStoryGenerator.ts`. Either way, stories are fully
-editable before you start a run, and the AI call has a 15s timeout with no
-retries and falls straight back to the templates on any error (bad key,
-rate limit, network issue, malformed response), so a flaky or missing key
-never blocks analyzing a URL or starting a run.
+instead of the built-in templates, and to enable the **custom test
+stories** textarea (free-text QA scenarios converted into executable
+flows — see point 2 above). Without a key, story drafting still works —
+it just uses the simpler templates in `server/src/agent/userStoryGenerator.ts`
+— and custom test stories record a single clear error case explaining
+that the AI isn't configured, instead of silently doing nothing.
+
+The model ID is centralized in `server/src/agent/geminiModel.ts` and
+defaults to `gemini-flash-latest`; override it with the `GEMINI_MODEL` env
+var if Google deprecates/renames it again (server logs will show a
+`... is no longer available` error naming the exact problem — no code
+change needed, just set the env var and redeploy). Either way, user
+stories are fully editable before you start a run, and every AI call has a
+timeout with no retries and falls back cleanly on any error (bad key,
+rate limit, network issue, malformed response, deprecated model) — all now
+logged via `console.error` so failures are diagnosable in Render's logs
+instead of failing silently.
 
 ## Database (Supabase)
 
