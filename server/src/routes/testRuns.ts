@@ -138,6 +138,7 @@ export async function testRunRoutes(app: FastifyInstance) {
         mode: body.mode === "quick" ? "quick" : "full",
         enabledCategoriesJson: enabledCategories ? JSON.stringify(enabledCategories) : null,
         createdByUsername,
+        testStories: body.testStories?.trim() || null,
       },
     });
 

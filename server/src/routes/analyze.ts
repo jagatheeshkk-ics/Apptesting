@@ -18,15 +18,28 @@ async function previousStoriesFor(targetUrl: string, moduleName: string, moduleU
   return previous?.userStoriesJson ? (JSON.parse(previous.userStoriesJson) as string[]) : [];
 }
 
+// Same idea as previousStoriesFor, but for the freeform "Test stories"
+// textarea instead of per-module stories.
+async function previousTestStoriesFor(targetUrl: string): Promise<string | null> {
+  const previous = await prisma.testRun.findFirst({
+    where: { targetUrl, testStories: { not: null } },
+    orderBy: { startedAt: "desc" },
+  });
+  return previous?.testStories ?? null;
+}
+
 export async function analyzeRoutes(app: FastifyInstance) {
   // Crawl-only preview: identifies modules on a URL, without creating a
-  // TestRun or running any tests. Auto-populates each module's user
-  // stories from the most recent prior test run against the same URL (a
-  // cheap DB lookup, no AI call) — otherwise stories are left empty for
-  // the tester to either write themselves or fill in with the
-  // "Auto-generate user stories" button (POST /api/analyze/generate-stories),
-  // which is a separate, explicit action so a URL analyze never silently
-  // fires a burst of AI calls on its own.
+  // TestRun or running any tests. Also returns the most recent prior test
+  // run's per-module stories and freeform test stories against the same
+  // URL (cheap DB lookups, no AI call) so the frontend can offer to reuse
+  // them — but only when the tester has opted into "Auto-fill stories
+  // saved from a previous test run", never automatically. Otherwise
+  // stories are left empty for the tester to either write themselves or
+  // fill in with the "Auto-generate user stories" button
+  // (POST /api/analyze/generate-stories), which is a separate, explicit
+  // action so a URL analyze never silently fires a burst of AI calls on
+  // its own.
   app.post("/api/analyze", async (req, reply) => {
     const body = req.body as { targetUrl?: string; accountId?: string; username?: string; password?: string };
     if (!body.targetUrl) return reply.code(400).send({ error: "targetUrl is required" });
@@ -73,8 +86,9 @@ export async function analyzeRoutes(app: FastifyInstance) {
       // to proactively ask for login credentials for this URL instead of
       // silently testing only whatever's reachable anonymously.
       const requiresLogin = !username && crawl.modules.some((m) => m.type === "form" && looksLikeLoginForm(m.fields));
+      const previousTestStories = await previousTestStoriesFor(body.targetUrl);
 
-      return { modules, requiresLogin };
+      return { modules, requiresLogin, previousTestStories };
     } finally {
       await crawl.context.close().catch(() => {});
       await crawl.browser.close().catch(() => {});

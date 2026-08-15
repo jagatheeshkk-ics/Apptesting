@@ -453,7 +453,9 @@ export const api = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
-    }).then((r) => json<{ modules: AnalyzedModule[]; requiresLogin: boolean }>(r)),
+    }).then((r) =>
+      json<{ modules: AnalyzedModule[]; requiresLogin: boolean; previousTestStories: string | null }>(r),
+    ),
 
   generateModuleStories: (modules: { name: string; url: string; type: string; fields: DetectedField[] }[]) =>
     fetch(`${BASE}/analyze/generate-stories`, {

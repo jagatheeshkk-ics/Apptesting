@@ -33,6 +33,7 @@ export default function NewTestRun() {
 
   const [modules, setModules] = useState<EditableModule[]>([]);
   const [lastAnalyzedModules, setLastAnalyzedModules] = useState<AnalyzedModule[] | null>(null);
+  const [lastPreviousTestStories, setLastPreviousTestStories] = useState<string | null>(null);
   const [autoFillStories, setAutoFillStories] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
@@ -42,6 +43,7 @@ export default function NewTestRun() {
   const [generateStoriesError, setGenerateStoriesError] = useState<string | null>(null);
 
   const [testStories, setTestStories] = useState("");
+  const [testStoriesSource, setTestStoriesSource] = useState<"previous" | "none">("none");
   const [requiredDetails, setRequiredDetails] = useState<RequiredDetail[]>([]);
   const [detailAnswers, setDetailAnswers] = useState<Record<string, string>>({});
   const [checkedStoriesText, setCheckedStoriesText] = useState<string | null>(null);
@@ -83,13 +85,18 @@ export default function NewTestRun() {
     setAnalyzing(true);
     setAnalyzeError(null);
     try {
-      const { modules: found, requiresLogin } = await api.analyzeUrl({
+      const { modules: found, requiresLogin, previousTestStories } = await api.analyzeUrl({
         targetUrl,
         username: loginUsername || undefined,
         password: loginPassword || undefined,
       });
       setLastAnalyzedModules(found);
+      setLastPreviousTestStories(previousTestStories);
       setModules(toEditableModules(found, autoFillStories));
+      setTestStories(autoFillStories && previousTestStories ? previousTestStories : "");
+      setTestStoriesSource(autoFillStories && previousTestStories ? "previous" : "none");
+      setCheckedStoriesText(null);
+      setRequiredDetails([]);
       setAnalyzedUrl(targetUrl);
       if (requiresLogin) setShowLoginPrompt(true);
     } catch (err) {
@@ -103,12 +110,17 @@ export default function NewTestRun() {
     if (targetUrl && targetUrl !== analyzedUrl) runAnalyze();
   }
 
-  // Re-derives the module list from the last analyze response instead of
-  // re-crawling — flipping this is purely a display choice about whether
-  // to show what's already known, not a reason to re-hit the target site.
+  // Re-derives the module list and test stories from the last analyze
+  // response instead of re-crawling — flipping this is purely a display
+  // choice about whether to show what's already known, not a reason to
+  // re-hit the target site.
   function onToggleAutoFillStories(checked: boolean) {
     setAutoFillStories(checked);
     if (lastAnalyzedModules) setModules(toEditableModules(lastAnalyzedModules, checked));
+    setTestStories(checked && lastPreviousTestStories ? lastPreviousTestStories : "");
+    setTestStoriesSource(checked && lastPreviousTestStories ? "previous" : "none");
+    setCheckedStoriesText(null);
+    setRequiredDetails([]);
   }
 
   // Only for modules with no stories yet — those pre-filled from a
@@ -136,8 +148,14 @@ export default function NewTestRun() {
     }
   }
 
-  async function checkStoryRequirements() {
-    if (!testStories.trim() || checkingRequirements) return;
+  // Checks whether the current test stories text needs any concrete detail
+  // filled in before it can run. Returns the required-detail list (possibly
+  // empty) on success, or null if the check itself failed. Runs
+  // automatically when the tester leaves the field (see onTestStoriesBlur)
+  // or, as a fallback, right before submit — there's no separate button to
+  // click for this.
+  async function checkStoryRequirements(): Promise<RequiredDetail[] | null> {
+    if (!testStories.trim()) return [];
     setCheckingRequirements(true);
     setRequirementsError(null);
     try {
@@ -152,11 +170,24 @@ export default function NewTestRun() {
         return next;
       });
       setCheckedStoriesText(testStories);
+      return found;
     } catch (err) {
       setRequirementsError((err as Error).message);
+      return null;
     } finally {
       setCheckingRequirements(false);
     }
+  }
+
+  function onTestStoriesBlur() {
+    if (testStories.trim() && testStories !== checkedStoriesText && !checkingRequirements) {
+      checkStoryRequirements();
+    }
+  }
+
+  function onTestStoriesChange(value: string) {
+    setTestStories(value);
+    setTestStoriesSource("none");
   }
 
   function updateStory(moduleIdx: number, storyIdx: number, value: string) {
@@ -207,12 +238,17 @@ export default function NewTestRun() {
       return;
     }
     if (testStories.trim()) {
+      let details = requiredDetails;
       if (checkedStoriesText !== testStories) {
-        setError('Click "Check required details" for your test stories before starting the run — the text has changed since you last checked.');
-        setSubmitting(false);
-        return;
+        const found = await checkStoryRequirements();
+        if (found === null) {
+          setError("Could not check the test stories for required details — see the error above and try again.");
+          setSubmitting(false);
+          return;
+        }
+        details = found;
       }
-      if (requiredDetails.some((d) => !detailAnswers[d.key]?.trim())) {
+      if (details.some((d) => !detailAnswers[d.key]?.trim())) {
         setError("Please answer all the required details below before starting the run.");
         setSubmitting(false);
         return;
@@ -268,11 +304,29 @@ export default function NewTestRun() {
           </div>
 
           <div className="form-row">
+            <label style={{ display: "block", fontWeight: 400, fontSize: 13 }}>
+              <input
+                type="checkbox"
+                checked={autoFillStories}
+                onChange={(e) => onToggleAutoFillStories(e.target.checked)}
+                style={{ marginRight: 8 }}
+              />
+              Auto-fill stories saved from a previous test run of the same URL
+              <span style={{ marginLeft: 4, fontWeight: 400, color: "#59636e" }}>
+                (both the test stories below and each module's user stories)
+              </span>
+            </label>
+          </div>
+
+          <div className="form-row">
             <label>
               Test stories (optional){" "}
               <span style={{ fontWeight: 400, color: "#59636e" }}>
                 — describe scenarios in plain English, the agent will test each one
               </span>
+              {testStoriesSource === "previous" && (
+                <span style={{ marginLeft: 8, fontSize: 12, color: "#59636e" }}>(from a previous test run)</span>
+              )}
             </label>
             <textarea
               rows={5}
@@ -280,14 +334,11 @@ export default function NewTestRun() {
                 'e.g. "Logging in with a valid username and password should reach the dashboard."\n"Logging in with the wrong password should show an error message and stay on the login page."'
               }
               value={testStories}
-              onChange={(e) => setTestStories(e.target.value)}
+              onChange={(e) => onTestStoriesChange(e.target.value)}
+              onBlur={onTestStoriesBlur}
               style={{ padding: "8px 10px", border: "1px solid #d0d7de", borderRadius: 6, fontSize: 14, fontFamily: "inherit", resize: "vertical" }}
             />
-            {!!testStories.trim() && (
-              <button type="button" onClick={checkStoryRequirements} disabled={checkingRequirements} style={{ marginTop: 8, alignSelf: "flex-start" }}>
-                {checkingRequirements ? "Checking…" : "Check required details"}
-              </button>
-            )}
+            {checkingRequirements && <p style={{ color: "#59636e", fontSize: 13 }}>Checking for required details…</p>}
             {requirementsError && <p style={{ color: "#cf222e", fontSize: 13 }}>{requirementsError}</p>}
             {checkedStoriesText === testStories && !requiredDetails.length && (
               <p style={{ color: "#1a7f37", fontSize: 13 }}>No additional details needed — ready to run.</p>
@@ -363,15 +414,6 @@ export default function NewTestRun() {
                 <span style={{ fontWeight: 400, color: "#59636e" }}>
                   (write your own, or auto-generate for modules with none yet; these drive what gets tested)
                 </span>
-              </label>
-              <label style={{ display: "block", fontWeight: 400, fontSize: 13, marginBottom: 8 }}>
-                <input
-                  type="checkbox"
-                  checked={autoFillStories}
-                  onChange={(e) => onToggleAutoFillStories(e.target.checked)}
-                  style={{ marginRight: 8 }}
-                />
-                Auto-fill stories saved from a previous test run of the same module
               </label>
               {generateStoriesError && <p style={{ color: "#cf222e", fontSize: 13 }}>{generateStoriesError}</p>}
               {modules.map((m, mi) => (

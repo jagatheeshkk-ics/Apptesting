@@ -124,6 +124,7 @@ model TestRun {
   regressionsJson String? // JSON-encoded diff vs the previous run for this target (regressed/fixed case names)
   enabledCategoriesJson String? // JSON-encoded array of TestCategory keys the user selected via checkboxes; null = all categories
   createdByUsername String? // snapshot of the platform user's display name/username who started this run (AUTH_ENABLED sessions only)
+  testStories String? // freeform custom test stories typed on the New Test Run page, persisted so a later run against the same URL can offer to reuse them
 
   // rollup counters, updated as the run progresses
   totalCases  Int @default(0)
