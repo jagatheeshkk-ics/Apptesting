@@ -15,11 +15,12 @@ import { executeStressCase } from "./stressExecutor.js";
 import { executePerformanceCase } from "./performanceExecutor.js";
 import { executeCompatibilityCase } from "./compatibilityExecutor.js";
 import { executeAccessibilityCase } from "./accessibilityExecutor.js";
-import { executeFlow } from "./flowExecutor.js";
+import { executeFlow, FlowStepDef } from "./flowExecutor.js";
 import { generateUserStories } from "./userStoryGenerator.js";
+import { generateStoryFlows } from "./storyFlowGenerator.js";
 import { computeRegressions } from "../analysis/regression.js";
 import { buildHtmlReport } from "../report/reportBuilder.js";
-import { DetectedModule, GeneratedTestCase, TestCategory } from "../types.js";
+import { DetectedModule, GeneratedTestCase, TestCategory, TestType } from "../types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const SCREENSHOT_DIR = path.join(__dirname, "..", "..", "storage", "screenshots");
@@ -31,6 +32,19 @@ export const REPORT_DIR = path.join(__dirname, "..", "..", "storage", "reports")
 // Override with TEST_EXECUTION_CONCURRENCY if the host is memory-constrained
 // or the target app doesn't tolerate concurrent requests well.
 const EXECUTION_CONCURRENCY = Math.max(1, Number(process.env.TEST_EXECUTION_CONCURRENCY) || 4);
+
+// A saved TestFlow and an AI-generated custom test story both boil down to
+// "run this ordered sequence of steps and record the outcome" — this shape
+// lets both be executed through the same pooled loop.
+interface StoryFlowLike {
+  category: "flow" | "story";
+  testFlowId?: string;
+  name: string;
+  description: string;
+  expectation: string;
+  testType: TestType;
+  steps: FlowStepDef[];
+}
 
 // Runs `worker` over every item in `items`, at most `concurrency` at a time,
 // using `pages[i]` for whichever items land on lane i.
@@ -92,7 +106,7 @@ async function buildGeneratedCases(
 
 export async function runTestRun(
   testRunId: string,
-  opts?: { moduleStories?: Record<string, string[]>; username?: string; password?: string },
+  opts?: { moduleStories?: Record<string, string[]>; username?: string; password?: string; testStories?: string },
 ): Promise<void> {
   const run = await prisma.testRun.findUniqueOrThrow({ where: { id: testRunId }, include: { account: true } });
 
@@ -165,9 +179,52 @@ export async function runTestRun(
             include: { steps: true },
           });
 
+    // Freeform scenarios typed on the New Test Run page, converted into
+    // executable flows by the AI generator. `null` means it couldn't be
+    // done at all (no GEMINI_API_KEY, or the call/parse failed) — that's
+    // surfaced as a single visible error case below rather than silently
+    // dropping the tester's input.
+    const storiesEnabled = !enabledCategories || enabledCategories.includes("story");
+    let storyFlows: StoryFlowLike[] = [];
+    let storyFlowsError: string | null = null;
+    if (storiesEnabled && opts?.testStories?.trim()) {
+      const generatedStories = await generateStoryFlows(opts.testStories, modules);
+      if (generatedStories === null) {
+        storyFlowsError = process.env.GEMINI_API_KEY
+          ? "Could not process the custom test stories — the AI call failed or returned an unexpected format. Try rephrasing the scenarios, or check the server logs."
+          : "Could not process the custom test stories — GEMINI_API_KEY is not configured on the server, so natural-language scenarios can't be converted into test steps.";
+      } else {
+        storyFlows = generatedStories.map((s) => ({
+          category: "story" as const,
+          testFlowId: undefined,
+          name: s.title,
+          description: `Custom test story: ${s.title}`,
+          expectation: s.expectation,
+          testType: s.testType,
+          steps: s.steps,
+        }));
+      }
+    }
+
+    const flowItems: StoryFlowLike[] = [
+      ...matchingFlows.map((flow) => ({
+        category: "flow" as const,
+        testFlowId: flow.id,
+        name: `Flow: ${flow.label}`,
+        description: `Multi-step flow with ${flow.steps.length} step(s), covering integration/system/functional/UAT-style checks.`,
+        expectation: `All ${flow.steps.length} step(s) of the flow should complete successfully, in order.`,
+        testType: "positive" as TestType,
+        steps: flow.steps,
+      })),
+      ...storyFlows,
+    ];
+
     await prisma.testRun.update({
       where: { id: testRunId },
-      data: { status: "executing", totalCases: generated.length + matchingFlows.length },
+      data: {
+        status: "executing",
+        totalCases: generated.length + flowItems.length + (storyFlowsError ? 1 : 0),
+      },
     });
 
     let passed = 0;
@@ -294,7 +351,7 @@ export async function runTestRun(
       }
     });
 
-    const flowConcurrency = Math.min(EXECUTION_CONCURRENCY, Math.max(matchingFlows.length, 1));
+    const flowConcurrency = Math.min(EXECUTION_CONCURRENCY, Math.max(flowItems.length, 1));
     const flowPages =
       flowConcurrency <= casePages.length
         ? casePages.slice(0, flowConcurrency)
@@ -303,23 +360,23 @@ export async function runTestRun(
             ...(await Promise.all(Array.from({ length: flowConcurrency - casePages.length }, () => context.newPage()))),
           ];
 
-    await runPooled(matchingFlows, flowPages, async (flow, page) => {
+    await runPooled(flowItems, flowPages, async (item, page) => {
       const caseRecord = await prisma.testCase.create({
         data: {
           testRunId,
-          testFlowId: flow.id,
-          category: "flow",
-          name: `Flow: ${flow.label}`,
-          description: `Multi-step flow with ${flow.steps.length} step(s), covering integration/system/functional/UAT-style checks.`,
-          expectation: `All ${flow.steps.length} step(s) of the flow should complete successfully, in order.`,
-          testType: "positive",
+          testFlowId: item.testFlowId,
+          category: item.category,
+          name: item.name,
+          description: item.description,
+          expectation: item.expectation,
+          testType: item.testType,
         },
       });
 
       let overallStatus: "pass" | "fail" | "error" = "error";
       let summary = "";
       try {
-        const flowResult = await executeFlow(page, flow.steps, SCREENSHOT_DIR);
+        const flowResult = await executeFlow(page, item.steps, SCREENSHOT_DIR);
         overallStatus = flowResult.overallStatus;
         summary = flowResult.summary;
 
@@ -354,6 +411,23 @@ export async function runTestRun(
         },
       });
     });
+
+    if (storyFlowsError) {
+      const caseRecord = await prisma.testCase.create({
+        data: {
+          testRunId,
+          category: "story",
+          name: "Custom test stories",
+          description: "Custom test story processing",
+          expectation: opts?.testStories ?? "",
+          testType: "positive",
+        },
+      });
+      await prisma.testResult.create({
+        data: { testCaseId: caseRecord.id, status: "error", actual: storyFlowsError, durationMs: 0 },
+      });
+      tally("error");
+    }
 
     flushProgress();
     await prisma.testRun.update({

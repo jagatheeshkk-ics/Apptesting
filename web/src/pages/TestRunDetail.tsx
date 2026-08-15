@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { TestRunDetail as TestRunDetailType, api } from "../api.js";
+import { TestCase, TestRunDetail as TestRunDetailType, api } from "../api.js";
 
 const CATEGORY_LABEL: Record<string, string> = {
   smoke: "Smoke tests",
@@ -11,6 +11,71 @@ const CATEGORY_LABEL: Record<string, string> = {
 };
 
 const GENERIC_CATEGORIES = ["smoke", "boundary", "vulnerability", "compatibility", "accessibility"] as const;
+
+// Shared by both saved Flows and AI-generated custom test stories — both
+// are a named sequence of steps with an overall expected/actual outcome.
+function FlowLikeSection({ title, cases }: { title: string; cases: TestCase[] }) {
+  if (!cases.length) return null;
+  return (
+    <div className="card">
+      <h3>
+        {title} ({cases.length})
+      </h3>
+      {cases.map((tc) => (
+        <div key={tc.id} style={{ marginBottom: 20 }}>
+          <p>
+            <strong>{tc.name}</strong>{" "}
+            {tc.result ? <span className={`badge ${tc.result.status}`}>{tc.result.status}</span> : null}
+          </p>
+          <p style={{ color: "#59636e", fontSize: 13 }}>
+            <strong>Expected:</strong> {tc.expectation ?? "—"}
+          </p>
+          <p style={{ color: "#59636e", fontSize: 13 }}>
+            <strong>Actual:</strong> {tc.result?.actual}
+          </p>
+          {tc.flowStepResults?.length ? (
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Action</th>
+                  <th>Status</th>
+                  <th>Detail</th>
+                  <th>Screenshot</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tc.flowStepResults.map((s) => (
+                  <tr key={s.order}>
+                    <td>{s.order + 1}</td>
+                    <td>{s.action}</td>
+                    <td>
+                      <span className={`badge ${s.status}`}>{s.status}</span>
+                    </td>
+                    <td>{s.detail}</td>
+                    <td>
+                      {s.screenshotPath ? (
+                        <a href={`/screenshots/${s.screenshotPath}`} target="_blank" rel="noreferrer">
+                          <img
+                            src={`/screenshots/${s.screenshotPath}`}
+                            alt="screenshot"
+                            style={{ maxWidth: 100, border: "1px solid #ddd", borderRadius: 4 }}
+                          />
+                        </a>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : null}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default function TestRunDetail() {
   const { id } = useParams();
@@ -35,6 +100,7 @@ export default function TestRunDetail() {
     compatibility: [],
     accessibility: [],
     flow: [],
+    story: [],
   };
   for (const tc of run.testCases) byCategory[tc.category]?.push(tc);
 
@@ -234,63 +300,8 @@ export default function TestRunDetail() {
         </div>
       ) : null}
 
-      {byCategory.flow.length ? (
-        <div className="card">
-          <h3>Flow tests ({byCategory.flow.length})</h3>
-          {byCategory.flow.map((tc) => (
-            <div key={tc.id} style={{ marginBottom: 20 }}>
-              <p>
-                <strong>{tc.name}</strong>{" "}
-                {tc.result ? <span className={`badge ${tc.result.status}`}>{tc.result.status}</span> : null}
-              </p>
-              <p style={{ color: "#59636e", fontSize: 13 }}>
-                <strong>Expected:</strong> {tc.expectation ?? "—"}
-              </p>
-              <p style={{ color: "#59636e", fontSize: 13 }}>
-                <strong>Actual:</strong> {tc.result?.actual}
-              </p>
-              {tc.flowStepResults?.length ? (
-                <table>
-                  <thead>
-                    <tr>
-                      <th>#</th>
-                      <th>Action</th>
-                      <th>Status</th>
-                      <th>Detail</th>
-                      <th>Screenshot</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {tc.flowStepResults.map((s) => (
-                      <tr key={s.order}>
-                        <td>{s.order + 1}</td>
-                        <td>{s.action}</td>
-                        <td>
-                          <span className={`badge ${s.status}`}>{s.status}</span>
-                        </td>
-                        <td>{s.detail}</td>
-                        <td>
-                          {s.screenshotPath ? (
-                            <a href={`/screenshots/${s.screenshotPath}`} target="_blank" rel="noreferrer">
-                              <img
-                                src={`/screenshots/${s.screenshotPath}`}
-                                alt="screenshot"
-                                style={{ maxWidth: 100, border: "1px solid #ddd", borderRadius: 4 }}
-                              />
-                            </a>
-                          ) : (
-                            "—"
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              ) : null}
-            </div>
-          ))}
-        </div>
-      ) : null}
+      <FlowLikeSection title="Flow tests" cases={byCategory.flow} />
+      <FlowLikeSection title="Custom test stories" cases={byCategory.story} />
     </div>
   );
 }
