@@ -1,7 +1,13 @@
 import { GoogleGenAI } from "@google/genai";
 import { DetectedModule, TestType } from "../types.js";
 import { FlowStepDef } from "./flowExecutor.js";
-import { GEMINI_MODEL, callGeminiWithRetry, isGeminiDailyQuotaExhausted, isGeminiOverloaded } from "./geminiModel.js";
+import {
+  GEMINI_MODEL,
+  callGeminiWithRetry,
+  isGeminiDailyQuotaExhausted,
+  isGeminiDeadlineExceeded,
+  isGeminiOverloaded,
+} from "./geminiModel.js";
 
 let client: GoogleGenAI | null | undefined;
 
@@ -169,18 +175,19 @@ Respond with ONLY a JSON object, no markdown, no code fences, no commentary, in 
 // Converts freeform QA scenarios into executable browser test flows via
 // Gemini. Returns null (never throws) when GEMINI_API_KEY isn't configured
 // or the call/parse fails, "daily-quota-exhausted" specifically when
-// Google's free-tier per-day request cap has been hit, or "overloaded" when
-// Google's model is transiently at capacity (already retried a few times by
-// callGeminiWithRetry) — each is a distinct, common-enough failure worth a
-// clearer message than a generic one; callers should surface any of them as
-// a visible error rather than silently dropping the tester's scenarios.
-// Returns empty flows/requiredDetails (not null) when testStories is blank,
-// since that's not a failure — there's just nothing to generate.
+// Google's free-tier per-day request cap has been hit, "overloaded" when
+// Google's model is transiently at capacity, or "timeout" when the call
+// didn't finish in time (retried a few times by callGeminiWithRetry first)
+// — each is a distinct, common-enough failure worth a clearer message than
+// a generic one; callers should surface any of them as a visible error
+// rather than silently dropping the tester's scenarios. Returns empty
+// flows/requiredDetails (not null) when testStories is blank, since that's
+// not a failure — there's just nothing to generate.
 export async function generateStoryFlows(
   testStories: string,
   modules: DetectedModule[],
   credentials?: { username: string; password: string },
-): Promise<StoryGenerationResult | null | "daily-quota-exhausted" | "overloaded"> {
+): Promise<StoryGenerationResult | null | "daily-quota-exhausted" | "overloaded" | "timeout"> {
   if (!testStories.trim()) return { flows: [], requiredDetails: [] };
 
   const genAI = getClient();
@@ -191,7 +198,10 @@ export async function generateStoryFlows(
       genAI.models.generateContent({
         model: GEMINI_MODEL,
         contents: buildPrompt(testStories, modules, credentials),
-        config: { httpOptions: { timeout: 30_000 } },
+        // Longer than the other generators' timeouts — this prompt includes
+        // a summary of every crawled page/form/field, which can get large
+        // on a real application and take Gemini longer to process.
+        config: { httpOptions: { timeout: 60_000 } },
       }),
     );
     const text = response.text ?? "";
@@ -219,6 +229,10 @@ export async function generateStoryFlows(
     if (isGeminiOverloaded(err)) {
       console.error("generateStoryFlows: Gemini is overloaded (503), even after retrying", err);
       return "overloaded";
+    }
+    if (isGeminiDeadlineExceeded(err)) {
+      console.error("generateStoryFlows: Gemini call timed out (504/DEADLINE_EXCEEDED), even after retrying", err);
+      return "timeout";
     }
     console.error("generateStoryFlows: Gemini call failed", err);
     return null;
