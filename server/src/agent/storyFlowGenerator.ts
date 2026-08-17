@@ -93,7 +93,7 @@ function extractJsonObject(text: string): Record<string, unknown> | null {
   }
 }
 
-function buildPrompt(testStories: string, modules: DetectedModule[]): string {
+function buildPrompt(testStories: string, modules: DetectedModule[], credentials?: { username: string; password: string }): string {
   const moduleSummary = modules
     .map((m) => {
       const fields = m.fields
@@ -106,11 +106,18 @@ function buildPrompt(testStories: string, modules: DetectedModule[]): string {
     })
     .join("\n");
 
+  const credentialsSection = credentials
+    ? `\nKnown valid login credentials for this application — use these EXACT values for any step that logs in or authenticates (username/email + password fields), instead of inventing your own:
+  Username/email: ${credentials.username}
+  Password: ${credentials.password}
+`
+    : "";
+
   return `You are converting QA test scenarios written in plain English into automated browser test flows for a web application under test.
 
 Pages/forms discovered on the application:
 ${moduleSummary || "(none discovered)"}
-
+${credentialsSection}
 Test scenarios written by a QA tester (plain English, possibly multiple, one idea per line or paragraph):
 """
 ${testStories}
@@ -126,7 +133,7 @@ For EACH distinct scenario described, produce one flow: a short ordered sequence
 
 Rules:
 - Always start each flow with a "navigate" step to the relevant page's URL from the list above.
-- Use realistic field values appropriate to the field's type/label/name (e.g. a valid email for an email field; an intentionally wrong value when the scenario calls for invalid input).
+- Use realistic field values appropriate to the field's type/label/name (e.g. a valid email for an email field; an intentionally wrong value when the scenario calls for invalid input) — EXCEPT for a login/authentication step, where you must use the known credentials above verbatim if they were given, since a made-up username/password will never actually work against the real application.
 - End each flow with at least one "expect*" step that actually verifies the scenario's expected outcome.
 - Classify each flow's "testType" as "positive" (valid input / expected normal usage) or "negative" (invalid input, or something that should be rejected/blocked/denied).
 - Write a one-sentence "expectation" describing what should happen, matching the scenario's intent.
@@ -172,6 +179,7 @@ Respond with ONLY a JSON object, no markdown, no code fences, no commentary, in 
 export async function generateStoryFlows(
   testStories: string,
   modules: DetectedModule[],
+  credentials?: { username: string; password: string },
 ): Promise<StoryGenerationResult | null | "daily-quota-exhausted" | "overloaded"> {
   if (!testStories.trim()) return { flows: [], requiredDetails: [] };
 
@@ -182,7 +190,7 @@ export async function generateStoryFlows(
     const response = await callGeminiWithRetry(() =>
       genAI.models.generateContent({
         model: GEMINI_MODEL,
-        contents: buildPrompt(testStories, modules),
+        contents: buildPrompt(testStories, modules, credentials),
         config: { httpOptions: { timeout: 30_000 } },
       }),
     );
