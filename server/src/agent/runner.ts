@@ -19,7 +19,7 @@ import { executeFlow, FlowStepDef } from "./flowExecutor.js";
 import { generateStoryFlows } from "./storyFlowGenerator.js";
 import { computeRegressions } from "../analysis/regression.js";
 import { buildHtmlReport } from "../report/reportBuilder.js";
-import { DetectedModule, GeneratedTestCase, TestCategory, TestType, moduleKey } from "../types.js";
+import { DetectedModule, GeneratedTestCase, TestCategory, TestType } from "../types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const SCREENSHOT_DIR = path.join(__dirname, "..", "..", "storage", "screenshots");
@@ -105,7 +105,7 @@ async function buildGeneratedCases(
 
 export async function runTestRun(
   testRunId: string,
-  opts?: { moduleStories?: Record<string, string[]>; username?: string; password?: string; testStories?: string },
+  opts?: { username?: string; password?: string; testStories?: string },
 ): Promise<void> {
   const run = await prisma.testRun.findUniqueOrThrow({ where: { id: testRunId }, include: { account: true } });
 
@@ -135,29 +135,11 @@ export async function runTestRun(
       },
     });
 
-    // No AI calls here — user stories are only ever AI-drafted via the New
-    // Test Run page's explicit "Auto-generate user stories" button
-    // (POST /api/analyze/generate-stories), never silently during a run.
+    // Crawled purely to drive field-based test generation below — the
+    // tester's own description of what to test lives on the run itself
+    // (run.moduleName / opts.testStories), not per crawled page.
     const moduleRecords = [];
     for (const m of modules) {
-      // Prefer stories the user reviewed/edited on the New Test Run page
-      // (matched by module name+url, since some apps give several distinct
-      // pages the same generic <title>); fall back to whatever was saved
-      // from the most recent prior run against this same target/module
-      // (e.g. the run was started via the API directly, bypassing that
-      // preview).
-      let stories = opts?.moduleStories?.[moduleKey(m.name, m.url)];
-      if (!stories) {
-        // Match on name AND url — some apps give several distinct pages
-        // the same generic <title>, and matching by name alone would pull
-        // one page's stories onto an unrelated page that just happens to
-        // share that title.
-        const previous = await prisma.module.findFirst({
-          where: { name: m.name, url: m.url, testRun: { targetUrl: run.targetUrl } },
-          orderBy: { testRun: { startedAt: "desc" } },
-        });
-        stories = previous?.userStoriesJson ? (JSON.parse(previous.userStoriesJson) as string[]) : [];
-      }
       moduleRecords.push(
         await prisma.module.create({
           data: {
@@ -166,7 +148,6 @@ export async function runTestRun(
             url: m.url,
             type: m.type,
             fieldsJson: JSON.stringify(m.fields),
-            userStoriesJson: JSON.stringify(stories),
           },
         }),
       );

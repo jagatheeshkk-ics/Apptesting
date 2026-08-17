@@ -84,9 +84,13 @@ export async function testRunRoutes(app: FastifyInstance) {
       projectId?: string;
       mode?: "full" | "quick";
       enabledCategories?: unknown;
-      moduleStories?: Record<string, string[]>;
+      // Tester-entered business module name (e.g. "Payroll") this run is
+      // testing — required, independent of whatever titles the crawler
+      // finds on the page.
+      moduleName?: string;
       // Freeform QA scenarios in plain English, typed on the New Test Run
-      // page — converted into executable test flows by the AI generator.
+      // page for that module — converted into executable test flows by the
+      // AI generator.
       testStories?: string;
       // Ad-hoc login credentials for this target URL, used when the URL was
       // detected as login-gated (POST /api/analyze -> requiresLogin) and no
@@ -99,6 +103,7 @@ export async function testRunRoutes(app: FastifyInstance) {
       accountLabel?: string;
     };
     if (!body.targetUrl) return reply.code(400).send({ error: "targetUrl is required" });
+    if (!body.moduleName?.trim()) return reply.code(400).send({ error: "moduleName is required" });
 
     let enabledCategories: TestCategory[] | null = null;
     if (body.enabledCategories !== undefined) {
@@ -138,6 +143,7 @@ export async function testRunRoutes(app: FastifyInstance) {
         mode: body.mode === "quick" ? "quick" : "full",
         enabledCategoriesJson: enabledCategories ? JSON.stringify(enabledCategories) : null,
         createdByUsername,
+        moduleName: body.moduleName.trim(),
         testStories: body.testStories?.trim() || null,
       },
     });
@@ -145,7 +151,6 @@ export async function testRunRoutes(app: FastifyInstance) {
     // fire-and-forget; the run progresses asynchronously and the UI polls status
     const adHocCredentials = accountId ? undefined : { username: body.username, password: body.password };
     runTestRun(run.id, {
-      moduleStories: body.moduleStories,
       testStories: body.testStories,
       ...adHocCredentials,
     }).catch((err) => {

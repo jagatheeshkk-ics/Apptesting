@@ -83,6 +83,7 @@ export interface TestRun {
   startedAt: string;
   completedAt: string | null;
   reportPath: string | null;
+  moduleName: string | null;
   totalCases: number;
   passedCases: number;
   failedCases: number;
@@ -160,23 +161,14 @@ export interface DetectedField {
   options?: string[];
 }
 
-// Some apps give several distinct pages the same generic <title> (e.g.
-// every page titled after the site itself), so a module's name alone isn't
-// a reliable identity — two modules with the same name but different URLs
-// are different modules. Anywhere module story data is keyed for
-// lookup/submission, key on this composite instead of name alone, or one
-// module's data silently overwrites the other's.
-export function moduleKey(name: string, url: string): string {
-  return `${name}::${url}`;
-}
-
+// A crawled page/form, used only to drive field-based test generation and
+// login detection — not something the tester names or attaches stories to
+// directly (see the New Test Run page's Module Name + Test stories fields).
 export interface AnalyzedModule {
   name: string;
   url: string;
   type: "page" | "form" | "nav";
   fields: DetectedField[];
-  userStories: string[];
-  storiesSource: "previous" | "none";
 }
 
 export interface RequiredDetail {
@@ -431,11 +423,11 @@ export const api = {
   getTestRun: (id: string) => fetch(`${BASE}/test-runs/${id}`).then((r) => json<TestRunDetail>(r)),
   createTestRun: (data: {
     targetUrl: string;
+    moduleName: string;
     accountId?: string;
     projectId?: string;
     mode?: "full" | "quick";
     enabledCategories?: TestCategory[];
-    moduleStories?: Record<string, string[]>;
     testStories?: string;
     username?: string;
     password?: string;
@@ -453,16 +445,14 @@ export const api = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
-    }).then((r) =>
-      json<{ modules: AnalyzedModule[]; requiresLogin: boolean; previousTestStories: string | null }>(r),
-    ),
+    }).then((r) => json<{ modules: AnalyzedModule[]; requiresLogin: boolean; previousModuleNames: string[] }>(r)),
 
-  generateModuleStories: (modules: { name: string; url: string; type: string; fields: DetectedField[] }[]) =>
-    fetch(`${BASE}/analyze/generate-stories`, {
+  moduleHistory: (data: { targetUrl: string; moduleName: string }) =>
+    fetch(`${BASE}/analyze/module-history`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ modules }),
-    }).then((r) => json<{ userStories: Record<string, string[]> }>(r)),
+      body: JSON.stringify(data),
+    }).then((r) => json<{ previousTestStories: string | null }>(r)),
 
   storyRequirements: (data: {
     testStories: string;

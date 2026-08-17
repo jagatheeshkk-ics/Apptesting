@@ -81,8 +81,9 @@ export async function buildTestRunXlsx(testRunId: string): Promise<Buffer> {
   ];
   summary.getRow(1).font = { bold: true };
   summary.addRows([
-    { field: "Module(s)", value: run.modules.map((m) => m.name).join(", ") || "—" },
+    { field: "Module", value: run.moduleName ?? "—" },
     { field: "Target", value: run.targetUrl },
+    { field: "Page(s)/form(s) discovered", value: run.modules.map((m) => m.name).join(", ") || "—" },
     { field: "Run by", value: run.createdByUsername ?? "Unknown" },
     { field: "Mode", value: `${run.mode === "quick" ? "Quick/sanity — " : ""}${testTypesLabel(run.enabledCategoriesJson)}` },
     { field: "Run started", value: run.startedAt.toISOString() },

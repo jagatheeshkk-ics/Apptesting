@@ -3,33 +3,40 @@
 An AI-agent-driven application testing platform. Give it a URL (and, optionally,
 a login account), and the agent will:
 
-1. **Analyze the URL** — as soon as you enter one and move on, the agent
-   crawls the application and identifies its modules (pages, forms, fields),
-   shown right under the URL field. Neither a module's user stories nor the
-   freeform "Test stories" text are auto-populated from a prior run by
-   default — that only happens (a cheap DB lookup against the most recent
-   prior run for the same target URL / module — module stories matched by
-   name **and** URL, since some apps give several distinct pages the same
-   generic title — no AI call) when you check **"Auto-fill stories saved
-   from a previous test run of the same URL"**, off by default; otherwise
-   both start empty for you to write your own, or draft module stories with
-   the **"Auto-generate user stories"** button — a deliberate, explicit
-   action, so entering a URL never fires a burst of AI calls, or silently
-   reuses old stories, on its own.
-   Story drafting uses the free Gemini API when `GEMINI_API_KEY` is set,
-   falling back to simple templates otherwise (still fully editable either
-   way, and the button only targets modules that don't already have
-   stories). Stories are documentation/traceability attached to each module
-   (shown on the run's detail page too) — they don't get parsed for test
-   steps. What actually drives test generation is the crawled
-   fields/forms/buttons for each module, filtered down to whichever
-   test-type checkboxes you selected. If the URL turns out to be gated
-   behind a login (a login form is found and no credentials were given),
-   the page detects this and asks for that URL's credentials right there —
-   "Re-analyze with these credentials" then crawls past the login page to
-   discover the authenticated modules too, instead of silently testing
-   only the login page. Those credentials can be used for just that one
-   run, or saved as a reusable login Account.
+1. **Analyze the URL, then name the module and describe what to test** — as
+   soon as you enter a URL and move on, the agent crawls the application
+   (purely to discover pages/forms/fields for the automated test types
+   below, and to detect a login wall) and then asks for two things, both
+   required:
+   - **Module name** — the business module this URL belongs to (e.g.
+     "Payroll", "CPF", "Attendance"), independent of whatever `<title>`s the
+     crawler finds on the page. Typing in this field suggests names you've
+     used before for this same URL, so repeat testing reuses the exact same
+     name instead of fragmenting history with near-duplicates like "payroll"
+     vs "Pay Roll".
+   - **Test stories** — freeform text describing every scenario that needs
+     testing at this URL/module (e.g. "Submitting a payroll amount for a
+     valid employee ID should succeed and show a confirmation."). Leaving
+     the module name field looks up the most recent test stories saved for
+     that exact (URL, module name) pair and auto-fills them — an exact match
+     on a name you chose, not a heuristic, so it's safe to do automatically
+     with no opt-in toggle. Leaving the test stories field (or starting the
+     run) checks automatically whether any scenario needs a concrete detail
+     the AI can't invent (e.g. a real employee ID) and asks for it via an
+     input field right there instead of guessing.
+   - The AI (requires `GEMINI_API_KEY`) converts the test stories into
+     executable browser flows — navigating, filling fields, clicking, and
+     verifying the described outcome — with the same per-step pass/fail and
+     screenshots as saved test flows. Without `GEMINI_API_KEY` configured,
+     the run instead records one clear error case explaining that the
+     stories couldn't be processed, rather than silently skipping them.
+   - If the URL turns out to be gated behind a login (a login form is found
+     and no credentials were given), the page detects this and asks for that
+     URL's credentials right there — "Re-analyze with these credentials"
+     then crawls past the login page to discover the authenticated
+     pages/forms too, instead of silently testing only the login page.
+     Those credentials can be used for just that one run, or saved as a
+     reusable login Account.
 2. **Generate and execute test cases** across the testing pyramid — which
    categories run is your choice, via checkboxes (default: all of them):
    - **Smoke** — pages load, forms render with all expected fields.
@@ -57,22 +64,8 @@ a login account), and the agent will:
      named multi-step journey (e.g. login → add to cart → checkout → expect
      confirmation) once; it then runs automatically as part of any test run
      against a matching target URL, with per-step pass/fail and screenshots.
-   - **Custom test stories** — a free-text box on the New Test Run page where
-     you can describe scenarios in plain English (e.g. "Logging in with the
-     wrong password should show an error message"); the AI (requires
-     `GEMINI_API_KEY`) converts each one into an executable browser flow —
-     navigating, filling fields, clicking, and verifying the described
-     outcome — with the same per-step pass/fail and screenshots as test
-     flows. Leaving the text box checks it automatically (no button to
-     click) — if a scenario references a specific real value the AI can't
-     invent (e.g. an actual employee ID or order number), it asks for it via
-     an input field right there instead of guessing; the answer gets folded
-     into the scenario text used to generate the real flow. That check also
-     runs right before a run starts if the text changed since the last
-     automatic check. Without `GEMINI_API_KEY`
-     configured, the run instead records one clear error case explaining
-     that the scenarios couldn't be processed, rather than silently
-     skipping them.
+   - **Custom test stories** — the required "Test stories" text described in
+     step 1 above, converted into executable browser flows.
 
    *Not included:* unit testing doesn't fit this architecture — the platform
    only ever sees a target URL from the outside, so there's no source/function

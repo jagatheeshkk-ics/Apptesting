@@ -124,7 +124,8 @@ model TestRun {
   regressionsJson String? // JSON-encoded diff vs the previous run for this target (regressed/fixed case names)
   enabledCategoriesJson String? // JSON-encoded array of TestCategory keys the user selected via checkboxes; null = all categories
   createdByUsername String? // snapshot of the platform user's display name/username who started this run (AUTH_ENABLED sessions only)
-  testStories String? // freeform custom test stories typed on the New Test Run page, persisted so a later run against the same URL can offer to reuse them
+  moduleName  String?   // tester-entered business module name for this run (e.g. "Payroll"), required at the API level; identifies the module independent of whatever titles the crawler finds on the page
+  testStories String? // freeform custom test stories typed on the New Test Run page for this module, persisted so a later run of the same module can offer to reuse them
 
   // rollup counters, updated as the run progresses
   totalCases  Int @default(0)
@@ -137,7 +138,10 @@ model TestRun {
   usageEvents UsageEvent[]
 }
 
-// A discovered page/form/element cluster on the target application.
+// A discovered page/form/element cluster on the target application, found by
+// the crawler purely to drive field-based test generation (smoke, boundary,
+// vulnerability, etc.) — not a unit the tester names or attaches stories to
+// directly (see TestRun.moduleName/testStories for that).
 model Module {
   id         String  @id @default(cuid())
   testRunId  String
@@ -146,7 +150,7 @@ model Module {
   url        String
   type       String // page | form | nav
   fieldsJson String // JSON-encoded array of detected input fields (name, type, attrs)
-  userStoriesJson String? // JSON-encoded array of editable user-story strings, auto-generated then user-editable
+  userStoriesJson String? // legacy: JSON-encoded per-page user stories from before TestRun.moduleName/testStories existed; unused going forward, kept for old runs' history
 
   testCases TestCase[]
 }
