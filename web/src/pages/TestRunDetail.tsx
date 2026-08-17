@@ -110,6 +110,11 @@ export default function TestRunDetail() {
     <div>
       <h2>Test run: {run.targetUrl}</h2>
       <div className="card">
+        {run.moduleName && (
+          <p>
+            Module: <strong>{run.moduleName}</strong>
+          </p>
+        )}
         <p>
           Status: <span className={`badge ${run.status}`}>{run.status}</span> &nbsp; Mode: <strong>{run.mode}</strong>
         </p>
@@ -132,13 +137,14 @@ export default function TestRunDetail() {
 
       {!!run.modules?.length && (
         <div className="card">
-          <h3>Modules &amp; user stories</h3>
+          <h3>Pages/forms discovered</h3>
           {run.modules.map((m) => (
             <div key={m.id} style={{ marginBottom: 14 }}>
               <strong>
                 {m.name} <span style={{ fontWeight: 400, color: "#59636e" }}>({m.type})</span>
               </strong>
-              {m.userStories.length ? (
+              {/* userStories is legacy, from before per-run Module Name + Test stories existed — only ever non-empty on old runs */}
+              {!!m.userStories.length && (
                 <ul style={{ margin: "4px 0 0", paddingLeft: 20 }}>
                   {m.userStories.map((s, i) => (
                     <li key={i} style={{ fontSize: 13 }}>
@@ -146,8 +152,6 @@ export default function TestRunDetail() {
                     </li>
                   ))}
                 </ul>
-              ) : (
-                <p style={{ margin: "4px 0 0", color: "#59636e", fontSize: 13 }}>No user stories recorded.</p>
               )}
             </div>
           ))}

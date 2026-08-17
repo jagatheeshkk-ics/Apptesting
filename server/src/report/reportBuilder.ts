@@ -202,8 +202,9 @@ export async function buildHtmlReport(testRunId: string, reportDir: string, scre
 <body>
   <h1>Application Test Report</h1>
   <div class="meta">
-    ${run.modules.length ? `Module(s): <strong>${run.modules.map((m) => escapeHtml(m.name)).join(", ")}</strong><br/>` : ""}
+    ${run.moduleName ? `Module: <strong>${escapeHtml(run.moduleName)}</strong><br/>` : ""}
     Target: <strong>${escapeHtml(run.targetUrl)}</strong><br/>
+    ${run.modules.length ? `Page(s)/form(s) discovered: <strong>${run.modules.map((m) => escapeHtml(m.name)).join(", ")}</strong><br/>` : ""}
     Run by: ${run.createdByUsername ? escapeHtml(run.createdByUsername) : "Unknown"}<br/>
     Mode: ${run.mode === "quick" ? "Quick/sanity — " : ""}${escapeHtml(testTypesLabel(run.enabledCategoriesJson))}<br/>
     Run started: ${run.startedAt.toISOString()}<br/>
