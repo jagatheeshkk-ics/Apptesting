@@ -204,6 +204,9 @@ export async function runTestRun(
       } else if (generatedStories === "overloaded") {
         storyFlowsError =
           "Could not process the custom test stories — Google's AI service was briefly overloaded with demand, even after retrying. Try running again in a minute or two.";
+      } else if (generatedStories === "timeout") {
+        storyFlowsError =
+          "Could not process the custom test stories — the AI request timed out, even after retrying. This can happen when a lot of pages/fields were discovered on the target URL, making the request larger. Try running again, or narrow the test stories to fewer scenarios at once.";
       } else if (generatedStories === null) {
         storyFlowsError = process.env.GEMINI_API_KEY
           ? "Could not process the custom test stories — the AI call failed or returned an unexpected format. Try rephrasing the scenarios, or check the server logs."
