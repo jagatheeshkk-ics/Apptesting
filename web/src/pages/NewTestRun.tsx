@@ -4,7 +4,6 @@ import {
   ALL_TEST_CATEGORIES,
   AnalyzedModule,
   Project,
-  RequiredDetail,
   TEST_CATEGORY_LABELS,
   TestCategory,
   api,
@@ -31,11 +30,6 @@ export default function NewTestRun() {
 
   const [testStories, setTestStories] = useState("");
   const [testStoriesSource, setTestStoriesSource] = useState<"previous" | "none">("none");
-  const [requiredDetails, setRequiredDetails] = useState<RequiredDetail[]>([]);
-  const [detailAnswers, setDetailAnswers] = useState<Record<string, string>>({});
-  const [checkedStoriesText, setCheckedStoriesText] = useState<string | null>(null);
-  const [checkingRequirements, setCheckingRequirements] = useState(false);
-  const [requirementsError, setRequirementsError] = useState<string | null>(null);
 
   const [showLoginPrompt, setShowLoginPrompt] = useState(false);
   const [loginUsername, setLoginUsername] = useState("");
@@ -77,8 +71,6 @@ export default function NewTestRun() {
         setModuleName("");
         setTestStories("");
         setTestStoriesSource("none");
-        setCheckedStoriesText(null);
-        setRequiredDetails([]);
       }
       setAnalyzedUrl(targetUrl);
       if (requiresLogin) setShowLoginPrompt(true);
@@ -107,50 +99,11 @@ export default function NewTestRun() {
       if (previousTestStories && !testStories.trim()) {
         setTestStories(previousTestStories);
         setTestStoriesSource("previous");
-        setCheckedStoriesText(null);
-        setRequiredDetails([]);
       }
     } catch {
       // Non-critical — the tester can still type their own stories.
     } finally {
       setCheckingModuleHistory(false);
-    }
-  }
-
-  // Checks whether the current test stories text needs any concrete detail
-  // filled in before it can run. Returns the required-detail list (possibly
-  // empty) on success, or null if the check itself failed. Runs
-  // automatically when the tester leaves the field (see onTestStoriesBlur)
-  // or, as a fallback, right before submit — there's no separate button to
-  // click for this.
-  async function checkStoryRequirements(): Promise<RequiredDetail[] | null> {
-    if (!testStories.trim()) return [];
-    setCheckingRequirements(true);
-    setRequirementsError(null);
-    try {
-      const { requiredDetails: found } = await api.storyRequirements({
-        testStories,
-        modules: crawledModules.map((m) => ({ name: m.name, url: m.url, type: m.type, fields: m.fields })),
-      });
-      setRequiredDetails(found);
-      setDetailAnswers((prev) => {
-        const next: Record<string, string> = {};
-        for (const d of found) next[d.key] = prev[d.key] ?? "";
-        return next;
-      });
-      setCheckedStoriesText(testStories);
-      return found;
-    } catch (err) {
-      setRequirementsError((err as Error).message);
-      return null;
-    } finally {
-      setCheckingRequirements(false);
-    }
-  }
-
-  function onTestStoriesBlur() {
-    if (testStories.trim() && testStories !== checkedStoriesText && !checkingRequirements) {
-      checkStoryRequirements();
     }
   }
 
@@ -172,12 +125,6 @@ export default function NewTestRun() {
     setSelectedCategories((sel) => (sel.size === ALL_TEST_CATEGORIES.length ? new Set() : new Set(ALL_TEST_CATEGORIES)));
   }
 
-  function buildAugmentedTestStories(): string {
-    if (!testStories.trim() || !requiredDetails.length) return testStories;
-    const lines = requiredDetails.map((d) => `- ${d.question}: ${detailAnswers[d.key]?.trim() ?? ""}`);
-    return `${testStories}\n\nAdditional details provided by the tester:\n${lines.join("\n")}`;
-  }
-
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setSubmitting(true);
@@ -197,21 +144,6 @@ export default function NewTestRun() {
       setSubmitting(false);
       return;
     }
-    let details = requiredDetails;
-    if (checkedStoriesText !== testStories) {
-      const found = await checkStoryRequirements();
-      if (found === null) {
-        setError("Could not check the test stories for required details — see the error above and try again.");
-        setSubmitting(false);
-        return;
-      }
-      details = found;
-    }
-    if (details.some((d) => !detailAnswers[d.key]?.trim())) {
-      setError("Please answer all the required details below before starting the run.");
-      setSubmitting(false);
-      return;
-    }
     try {
       const useAdHocLogin = showLoginPrompt && loginUsername && loginPassword;
 
@@ -221,7 +153,7 @@ export default function NewTestRun() {
         projectId: projectId || undefined,
         mode: quickMode ? "quick" : "full",
         enabledCategories: Array.from(selectedCategories),
-        testStories: buildAugmentedTestStories().trim(),
+        testStories: testStories.trim(),
         username: useAdHocLogin ? loginUsername : undefined,
         password: useAdHocLogin ? loginPassword : undefined,
         saveAsAccount: useAdHocLogin ? saveAsAccount : undefined,
@@ -301,28 +233,8 @@ export default function NewTestRun() {
               }
               value={testStories}
               onChange={(e) => onTestStoriesChange(e.target.value)}
-              onBlur={onTestStoriesBlur}
               style={{ padding: "8px 10px", border: "1px solid #d0d7de", borderRadius: 6, fontSize: 14, fontFamily: "inherit", resize: "vertical" }}
             />
-            {checkingRequirements && <p style={{ color: "#59636e", fontSize: 13 }}>Checking for required details…</p>}
-            {requirementsError && <p style={{ color: "#cf222e", fontSize: 13 }}>{requirementsError}</p>}
-            {checkedStoriesText === testStories && !requiredDetails.length && (
-              <p style={{ color: "#1a7f37", fontSize: 13 }}>No additional details needed — ready to run.</p>
-            )}
-            {!!requiredDetails.length && (
-              <div style={{ border: "1px solid #d0d7de", borderRadius: 8, padding: 12, marginTop: 8 }}>
-                <strong style={{ fontSize: 13 }}>This needs a few details before it can run:</strong>
-                {requiredDetails.map((d) => (
-                  <div className="form-row" key={d.key} style={{ marginTop: 8, marginBottom: 0 }}>
-                    <label style={{ fontWeight: 400 }}>{d.question}</label>
-                    <input
-                      value={detailAnswers[d.key] || ""}
-                      onChange={(e) => setDetailAnswers((a) => ({ ...a, [d.key]: e.target.value }))}
-                    />
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
 
           {!!crawledModules.length && (

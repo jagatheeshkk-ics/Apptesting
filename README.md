@@ -20,16 +20,18 @@ a login account), and the agent will:
      the module name field looks up the most recent test stories saved for
      that exact (URL, module name) pair and auto-fills them — an exact match
      on a name you chose, not a heuristic, so it's safe to do automatically
-     with no opt-in toggle. Leaving the test stories field (or starting the
-     run) checks automatically whether any scenario needs a concrete detail
-     the AI can't invent (e.g. a real employee ID) and asks for it via an
-     input field right there instead of guessing.
+     with no opt-in toggle.
    - The AI (requires `GEMINI_API_KEY`) converts the test stories into
      executable browser flows — navigating, filling fields, clicking, and
      verifying the described outcome — with the same per-step pass/fail and
-     screenshots as saved test flows. Without `GEMINI_API_KEY` configured,
-     the run instead records one clear error case explaining that the
-     stories couldn't be processed, rather than silently skipping them.
+     screenshots as saved test flows. If a scenario turns out to reference a
+     specific real value the AI can't invent (e.g. an actual employee ID or
+     order number) that wasn't given in the stories text, the run records one
+     clear error case naming exactly what's missing, rather than guessing —
+     there's no separate pre-check step; add the detail to the stories text
+     and re-run. Without `GEMINI_API_KEY` configured at all, the run instead
+     records one clear error case explaining that the stories couldn't be
+     processed, rather than silently skipping them.
    - If the URL turns out to be gated behind a login (a login form is found
      and no credentials were given), the page detects this and asks for that
      URL's credentials right there — "Re-analyze with these credentials"
