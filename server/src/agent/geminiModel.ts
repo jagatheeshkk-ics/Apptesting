@@ -58,11 +58,13 @@ export function isGeminiDeadlineExceeded(err: unknown): boolean {
 // but never retries a 429 caused by an exhausted per-day quota, since that
 // won't clear within any reasonable backoff window. Any other error, or a
 // retryable error on the final attempt, is rethrown for the caller's
-// existing error handling. maxRetries defaults to 3 (4 attempts total,
-// ~3s/6s/9s backoff between them) since these are one-off interactive
-// calls, not a hot loop — worth spending up to ~20s absorbing a brief
-// demand spike rather than failing back to the tester immediately.
-export async function callGeminiWithRetry<T>(fn: () => Promise<T>, maxRetries = 3): Promise<T> {
+// existing error handling. maxRetries defaults to 5 (6 attempts total,
+// ~3s/6s/9s/12s/15s backoff between them, ~45s total) — these calls run as
+// part of an already-async background test run rather than blocking a
+// synchronous UI action, so it's worth spending up to a minute absorbing a
+// sustained demand spike on Google's free tier rather than failing back to
+// the tester after a much shorter window.
+export async function callGeminiWithRetry<T>(fn: () => Promise<T>, maxRetries = 5): Promise<T> {
   for (let attempt = 0; ; attempt++) {
     try {
       return await fn();
