@@ -111,8 +111,12 @@ const USER_FIELD_SELECTORS = [
   'input[id*="login" i]',
 ];
 const PASSWORD_FIELD_SELECTOR = 'input[type="password"]';
+// Covers native form submission (button[type=submit]) plus common submit
+// button labels for apps that handle the click in JS instead — "Proceed"
+// seen on a real staging login page prompted adding it here alongside the
+// more common "Log in"/"Sign in"/"Next"/"Continue".
 const SUBMIT_SELECTOR =
-  'button[type="submit"], input[type="submit"], button:has-text("Log in"), button:has-text("Sign in"), button:has-text("Next"), button:has-text("Continue")';
+  'button[type="submit"], input[type="submit"], button:has-text("Log in"), button:has-text("Sign in"), button:has-text("Next"), button:has-text("Continue"), button:has-text("Proceed"), button:has-text("Submit"), button:has-text("Enter")';
 
 // Collapses URL variants that point at the same page (trailing slash,
 // fragment) to one canonical string, so the same page reached via two
@@ -125,6 +129,19 @@ function normalizeUrl(raw: string): string {
     u.pathname = u.pathname.slice(0, -1);
   }
   return u.toString();
+}
+
+// "domcontentloaded" fires as soon as the initial HTML is parsed — for a
+// client-rendered SPA (React/Angular/Vue etc.) that's often before the
+// framework has mounted and actually put a <form> and its inputs into the
+// DOM, so the crawler sees an empty shell and both field detection and
+// login detection silently find nothing. A short best-effort wait for
+// network activity to quiet down (most such apps fetch data/JS before
+// rendering) gives the app a chance to finish rendering without blocking
+// indefinitely on pages that poll in the background — swallow the timeout
+// rather than fail the whole crawl over it.
+async function settleAfterNavigation(page: Page): Promise<void> {
+  await page.waitForLoadState("networkidle", { timeout: 4000 }).catch(() => {});
 }
 
 async function findField(page: Page, selectors: string[]) {
@@ -233,6 +250,7 @@ export async function crawlAndIdentifyModules(opts: CrawlOptions): Promise<Crawl
   let loggedIn = false;
 
   await page.goto(opts.targetUrl, { waitUntil: "domcontentloaded" });
+  await settleAfterNavigation(page);
 
   if (opts.username && opts.password) {
     try {
@@ -264,6 +282,7 @@ export async function crawlAndIdentifyModules(opts: CrawlOptions): Promise<Crawl
     try {
       const resp = await page.goto(url, { waitUntil: "domcontentloaded", timeout: 15000 });
       statusCode = resp?.status();
+      await settleAfterNavigation(page);
     } catch {
       opts.onUsageEvent?.({ url, method: "GET", statusCode: 0, responseMs: Date.now() - start });
       continue;
