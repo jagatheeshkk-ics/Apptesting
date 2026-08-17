@@ -146,17 +146,31 @@ async function clickSubmit(page: Page): Promise<boolean> {
 // two-step logins (username -> Next/Continue -> password appears on the
 // next screen, e.g. Microsoft/Google/many enterprise SSO-style flows).
 async function attemptLogin(page: Page, username: string, password: string): Promise<boolean> {
+  const url = page.url();
   const userField = await findField(page, USER_FIELD_SELECTORS);
-  if (!userField) return false;
+  if (!userField) {
+    console.error(
+      `attemptLogin: no recognizable username/email field found on ${url} — the login form may use field names/attributes outside USER_FIELD_SELECTORS in crawler.ts.`,
+    );
+    return false;
+  }
   await userField.fill(username);
 
   let passField = await findField(page, [PASSWORD_FIELD_SELECTOR]);
   if (!passField) {
     const advanced = await clickSubmit(page);
-    if (!advanced) return false;
+    if (!advanced) {
+      console.error(
+        `attemptLogin: filled the username field on ${url} but found no submit control to advance to the password step (checked SUBMIT_SELECTOR in crawler.ts).`,
+      );
+      return false;
+    }
     await page.waitForTimeout(500);
     passField = await findField(page, [PASSWORD_FIELD_SELECTOR]);
-    if (!passField) return false; // still no password step — not a login flow we can complete
+    if (!passField) {
+      console.error(`attemptLogin: advanced past the username step on ${url} but no password field appeared — not a login flow this agent can complete.`);
+      return false; // still no password step — not a login flow we can complete
+    }
   }
 
   await passField.fill(password);
@@ -164,6 +178,19 @@ async function attemptLogin(page: Page, username: string, password: string): Pro
   if (!submitted) {
     await passField.press("Enter");
     await page.waitForTimeout(1500);
+  }
+
+  // A password field still present after submitting is a strong signal the
+  // login was rejected (wrong credentials, or the form re-rendered with a
+  // validation error) rather than actually succeeding — filling the fields
+  // and clicking submit isn't proof of a real login, so don't report a
+  // false positive that hides a failed login from the tester.
+  const stillOnLoginForm = await findField(page, [PASSWORD_FIELD_SELECTOR]);
+  if (stillOnLoginForm) {
+    console.error(
+      `attemptLogin: submitted credentials on ${url} but a password field is still present afterward (now at ${page.url()}) — the login was likely rejected. Double-check the username/password are correct.`,
+    );
+    return false;
   }
   return true;
 }
@@ -209,9 +236,13 @@ export async function crawlAndIdentifyModules(opts: CrawlOptions): Promise<Crawl
 
   if (opts.username && opts.password) {
     try {
+      // attemptLogin logs the specific reason for any false result itself
+      // (field not found, no submit control, still on the login form after
+      // submitting, etc.) — nothing generic to add here.
       loggedIn = await attemptLogin(page, opts.username, opts.password);
-    } catch {
+    } catch (err) {
       loggedIn = false;
+      console.error(`crawlAndIdentifyModules: login attempt on ${opts.targetUrl} threw`, err);
     }
   }
 

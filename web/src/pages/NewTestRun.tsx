@@ -36,6 +36,7 @@ export default function NewTestRun() {
   const [loginPassword, setLoginPassword] = useState("");
   const [saveAsAccount, setSaveAsAccount] = useState(false);
   const [accountLabel, setAccountLabel] = useState("");
+  const [loggedIn, setLoggedIn] = useState<boolean | null>(null);
 
   useEffect(() => {
     api.listProjects().then(setProjects).catch(() => {});
@@ -56,13 +57,14 @@ export default function NewTestRun() {
     setAnalyzing(true);
     setAnalyzeError(null);
     try {
-      const { modules: found, requiresLogin, previousModuleNames } = await api.analyzeUrl({
+      const { modules: found, requiresLogin, previousModuleNames, loggedIn: loginResult } = await api.analyzeUrl({
         targetUrl,
         username: loginUsername || undefined,
         password: loginPassword || undefined,
       });
       setCrawledModules(found);
       setModuleNameSuggestions(previousModuleNames);
+      setLoggedIn(loginResult);
       // A fresh target URL means whatever module name/stories were entered
       // belonged to the previous URL — don't carry them over. A re-analyze
       // of the SAME URL (e.g. after submitting login credentials) leaves
@@ -268,6 +270,18 @@ export default function NewTestRun() {
                   Re-analyze with these credentials
                 </button>
               </div>
+              {loggedIn === true && (
+                <p style={{ color: "#1a7f37", fontSize: 13, marginTop: 8 }}>
+                  ✓ Logged in successfully — the pages/forms above reflect the authenticated view.
+                </p>
+              )}
+              {loggedIn === false && (
+                <p style={{ color: "#cf222e", fontSize: 13, marginTop: 8 }}>
+                  ⚠ Could not confirm this login succeeded — the crawl continued anonymously, so testing may only
+                  cover the login page. Double-check the username/password, or this login form may use a layout the
+                  agent doesn't recognize yet.
+                </p>
+              )}
               <label style={{ display: "block", fontWeight: 400, marginTop: 10 }}>
                 <input type="checkbox" checked={saveAsAccount} onChange={(e) => setSaveAsAccount(e.target.checked)} style={{ marginRight: 8 }} />
                 Save these as a reusable login account
