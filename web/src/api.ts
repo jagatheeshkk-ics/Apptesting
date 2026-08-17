@@ -171,11 +171,6 @@ export interface AnalyzedModule {
   fields: DetectedField[];
 }
 
-export interface RequiredDetail {
-  key: string;
-  question: string;
-}
-
 export interface RunModule {
   id: string;
   name: string;
@@ -453,16 +448,6 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     }).then((r) => json<{ previousTestStories: string | null }>(r)),
-
-  storyRequirements: (data: {
-    testStories: string;
-    modules: { name: string; url: string; type: string; fields: DetectedField[] }[];
-  }) =>
-    fetch(`${BASE}/analyze/story-requirements`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
-    }).then((r) => json<{ requiredDetails: RequiredDetail[] }>(r)),
 
   accountKpis: () => fetch(`${BASE}/kpi/accounts`).then((r) => json<AccountKpi[]>(r)),
   agentKpi: () => fetch(`${BASE}/kpi/agent`).then((r) => json<AgentPerformanceKpi>(r)),

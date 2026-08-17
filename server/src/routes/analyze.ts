@@ -1,8 +1,6 @@
 import { FastifyInstance } from "fastify";
 import { prisma } from "../db.js";
 import { crawlAndIdentifyModules, looksLikeLoginForm } from "../agent/crawler.js";
-import { generateStoryFlows } from "../agent/storyFlowGenerator.js";
-import { DetectedField, DetectedModule } from "../types.js";
 
 // Distinct business module names previously used for this target URL, most
 // recently used first — feeds the New Test Run page's suggestions for the
@@ -84,38 +82,5 @@ export async function analyzeRoutes(app: FastifyInstance) {
       orderBy: { startedAt: "desc" },
     });
     return { previousTestStories: previous?.testStories ?? null };
-  });
-
-  // Preview-only: for the freeform "Test stories" textarea, asks the AI
-  // whether executing the described scenarios needs any concrete detail
-  // (e.g. a real record ID) it can't infer, without generating/persisting
-  // the actual flow yet. Runs automatically when the tester leaves the
-  // field — never while they're still typing.
-  app.post("/api/analyze/story-requirements", async (req, reply) => {
-    const body = req.body as {
-      testStories?: string;
-      modules?: { name: string; url: string; type: string; fields: DetectedField[] }[];
-    };
-    if (!body.testStories?.trim()) return { requiredDetails: [] };
-
-    const result = await generateStoryFlows(body.testStories, (body.modules ?? []) as DetectedModule[]);
-    if (result === "daily-quota-exhausted") {
-      return reply.code(502).send({
-        error:
-          "Could not analyze the test stories — Gemini's free-tier daily request quota is exhausted for today. It resets after 24 hours, or you can enable billing on your Google AI Studio project to remove the daily cap.",
-      });
-    }
-    if (result === "overloaded") {
-      return reply.code(502).send({
-        error:
-          "Could not analyze the test stories — Google's AI service is briefly overloaded with demand. This usually clears within a minute or two; leave the field and try again shortly.",
-      });
-    }
-    if (!result) {
-      return reply.code(502).send({
-        error: "Could not analyze the test stories — the AI call failed or isn't configured. Check server logs.",
-      });
-    }
-    return { requiredDetails: result.requiredDetails };
   });
 }
