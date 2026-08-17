@@ -137,6 +137,12 @@ export async function analyzeRoutes(app: FastifyInstance) {
           "Could not analyze the test stories — Gemini's free-tier daily request quota is exhausted for today. It resets after 24 hours, or you can enable billing on your Google AI Studio project to remove the daily cap.",
       });
     }
+    if (result === "overloaded") {
+      return reply.code(502).send({
+        error:
+          "Could not analyze the test stories — Google's AI service is briefly overloaded with demand. This usually clears within a minute or two; leave the field and try again shortly.",
+      });
+    }
     if (!result) {
       return reply.code(502).send({
         error: "Could not analyze the test stories — the AI call failed or isn't configured. Check server logs.",

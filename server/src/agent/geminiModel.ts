@@ -31,13 +31,24 @@ export function isGeminiDailyQuotaExhausted(err: unknown): boolean {
   return /perday/i.test(message);
 }
 
-// Retries a Gemini call up to twice on a 429/503, waiting for the
-// server-suggested delay on a 429 or a short fixed backoff on a 503 — but
+// 503 = Google's own "model is currently experiencing high demand" signal
+// — a transient overload on Google's side, not something wrong with the
+// request. Callers that surface errors to the tester should say so plainly
+// rather than a generic "AI call failed" message.
+export function isGeminiOverloaded(err: unknown): boolean {
+  return (err as { status?: number })?.status === 503;
+}
+
+// Retries a Gemini call a few times on a 429/503, waiting for the
+// server-suggested delay on a 429 or a short growing backoff on a 503 — but
 // never retries a 429 caused by an exhausted per-day quota, since that
 // won't clear within any reasonable backoff window. Any other error, or a
 // retryable error on the final attempt, is rethrown for the caller's
-// existing error handling.
-export async function callGeminiWithRetry<T>(fn: () => Promise<T>, maxRetries = 2): Promise<T> {
+// existing error handling. maxRetries defaults to 3 (4 attempts total,
+// ~3s/6s/9s backoff between them) since these are one-off interactive
+// calls, not a hot loop — worth spending up to ~20s absorbing a brief
+// demand spike rather than failing back to the tester immediately.
+export async function callGeminiWithRetry<T>(fn: () => Promise<T>, maxRetries = 3): Promise<T> {
   for (let attempt = 0; ; attempt++) {
     try {
       return await fn();

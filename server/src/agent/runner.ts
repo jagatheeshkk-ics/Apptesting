@@ -208,6 +208,9 @@ export async function runTestRun(
       if (generatedStories === "daily-quota-exhausted") {
         storyFlowsError =
           "Could not process the custom test stories — Gemini's free-tier daily request quota is exhausted for today. It resets after 24 hours, or you can enable billing on your Google AI Studio project to remove the daily cap.";
+      } else if (generatedStories === "overloaded") {
+        storyFlowsError =
+          "Could not process the custom test stories — Google's AI service was briefly overloaded with demand, even after retrying. Try running again in a minute or two.";
       } else if (generatedStories === null) {
         storyFlowsError = process.env.GEMINI_API_KEY
           ? "Could not process the custom test stories — the AI call failed or returned an unexpected format. Try rephrasing the scenarios, or check the server logs."
