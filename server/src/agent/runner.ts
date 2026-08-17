@@ -192,7 +192,12 @@ export async function runTestRun(
     let storyFlows: StoryFlowLike[] = [];
     let storyFlowsError: string | null = null;
     if (storiesEnabled && opts?.testStories?.trim()) {
-      const generatedStories = await generateStoryFlows(opts.testStories, modules);
+      // Pass along the real credentials this run logged in with, so a
+      // scenario like "logging in with a valid username and password"
+      // fills in the actual account instead of the AI inventing a
+      // plausible-looking one that will never work against the real app.
+      const credentials = credentialUsername && credentialPassword ? { username: credentialUsername, password: credentialPassword } : undefined;
+      const generatedStories = await generateStoryFlows(opts.testStories, modules, credentials);
       if (generatedStories === "daily-quota-exhausted") {
         storyFlowsError =
           "Could not process the custom test stories — Gemini's free-tier daily request quota is exhausted for today. It resets after 24 hours, or you can enable billing on your Google AI Studio project to remove the daily cap.";
