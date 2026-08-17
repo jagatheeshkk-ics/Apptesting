@@ -59,7 +59,12 @@ export async function analyzeRoutes(app: FastifyInstance) {
       const requiresLogin = !username && crawl.modules.some((m) => m.type === "form" && looksLikeLoginForm(m.fields));
       const previousModuleNames = await previousModuleNamesFor(body.targetUrl);
 
-      return { modules, requiresLogin, previousModuleNames };
+      // Only meaningful when credentials were supplied — lets the New Test
+      // Run page tell the tester whether the login actually succeeded
+      // instead of leaving them to guess from an unchanged module list.
+      const loggedIn = username && password ? crawl.loggedIn : null;
+
+      return { modules, requiresLogin, previousModuleNames, loggedIn };
     } finally {
       await crawl.context.close().catch(() => {});
       await crawl.browser.close().catch(() => {});

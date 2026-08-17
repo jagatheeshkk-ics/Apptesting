@@ -440,7 +440,14 @@ export const api = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
-    }).then((r) => json<{ modules: AnalyzedModule[]; requiresLogin: boolean; previousModuleNames: string[] }>(r)),
+    }).then((r) =>
+      json<{
+        modules: AnalyzedModule[];
+        requiresLogin: boolean;
+        previousModuleNames: string[];
+        loggedIn: boolean | null;
+      }>(r),
+    ),
 
   moduleHistory: (data: { targetUrl: string; moduleName: string }) =>
     fetch(`${BASE}/analyze/module-history`, {

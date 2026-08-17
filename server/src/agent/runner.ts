@@ -112,13 +112,15 @@ export async function runTestRun(
   try {
     await prisma.testRun.update({ where: { id: testRunId }, data: { status: "crawling" } });
 
-    const { modules, context, browser } = await crawlAndIdentifyModules({
+    const credentialUsername = run.account?.username ?? opts?.username;
+    const credentialPassword = run.account?.password ?? opts?.password;
+    const { modules, context, browser, loggedIn } = await crawlAndIdentifyModules({
       targetUrl: run.targetUrl,
       // Prefer a linked Account's credentials; fall back to ad-hoc
       // credentials the user typed in for a login-gated URL that wasn't
       // saved as a reusable Account.
-      username: run.account?.username ?? opts?.username,
-      password: run.account?.password ?? opts?.password,
+      username: credentialUsername,
+      password: credentialPassword,
       onUsageEvent: (evt) => {
         prisma.usageEvent
           .create({
@@ -134,6 +136,11 @@ export async function runTestRun(
           .catch(() => {});
       },
     });
+    if (credentialUsername && credentialPassword && !loggedIn) {
+      console.error(
+        `runTestRun ${testRunId}: credentials were provided for ${run.targetUrl} but login could not be confirmed — the run continued and will likely only cover the anonymous/login-page content. Check crawlAndIdentifyModules logs above for why the login form wasn't recognized or was rejected.`,
+      );
+    }
 
     // Crawled purely to drive field-based test generation below — the
     // tester's own description of what to test lives on the run itself
