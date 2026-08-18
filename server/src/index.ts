@@ -17,9 +17,45 @@ import { roleRoutes } from "./routes/roles.js";
 import { analyzeRoutes } from "./routes/analyze.js";
 import { registerAuthGate } from "./auth/gate.js";
 import { REPORT_DIR, SCREENSHOT_DIR } from "./agent/runner.js";
+import { prisma } from "./db.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = Fastify({ logger: true });
+
+// Every test run in progress is tracked only in this process's memory (the
+// browser/context, the cancellation flag, etc.) — a restart (a deploy, a
+// crash, Render recycling the dyno) kills all of that without a chance to
+// write a final status, leaving the DB row stuck showing "executing" (or,
+// worse, "cancelling" forever if a stop was requested right before the
+// restart, since nothing is left running to notice the request). Reconcile
+// on boot: nothing still "cancelling" can ever finish cancelling itself, so
+// call it done; nothing still pending/crawling/generating/executing can
+// possibly still be running, so call it failed with a clear reason instead
+// of leaving it looking perpetually in-progress.
+async function reconcileOrphanedRuns(): Promise<void> {
+  try {
+    const cancelled = await prisma.testRun.updateMany({
+      where: { status: "cancelling" },
+      data: { status: "cancelled", completedAt: new Date() },
+    });
+    const failed = await prisma.testRun.updateMany({
+      where: { status: { in: ["pending", "crawling", "generating", "executing"] } },
+      data: {
+        status: "failed",
+        error: "This run was interrupted by a server restart (e.g. a deploy) and could not continue.",
+        completedAt: new Date(),
+      },
+    });
+    if (cancelled.count || failed.count) {
+      app.log.warn(
+        `Reconciled ${cancelled.count} orphaned "cancelling" run(s) to "cancelled" and ${failed.count} orphaned in-progress run(s) to "failed" on startup.`,
+      );
+    }
+  } catch (err) {
+    app.log.warn(err, "failed to reconcile orphaned test runs on startup");
+  }
+}
+await reconcileOrphanedRuns();
 
 if (process.env.AUTH_ENABLED === "true" && !process.env.AUTH_SECRET) {
   app.log.error("AUTH_ENABLED=true but AUTH_SECRET is not set — refusing to start. Set AUTH_SECRET to a long random string.");
