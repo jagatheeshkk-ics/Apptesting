@@ -268,8 +268,20 @@ export async function runTestRun(
     };
 
     // Fire-and-forget: keeps the progress counters live without making every
-    // case/flow wait on a DB round-trip before the next one can start.
+    // case/flow wait on a DB round-trip before the next one can start. Also
+    // time-throttled — with several browser tabs finishing cases in quick
+    // succession, an update on every single completion was issuing enough
+    // concurrent queries to saturate the pooled DB connection limit and slow
+    // down unrelated requests (e.g. the test-runs list polling). The
+    // unconditional update right after execution finishes (below) still
+    // guarantees the final counts land even if the last case's flush here
+    // gets skipped by the throttle.
+    let lastFlushAt = 0;
+    const FLUSH_INTERVAL_MS = 1500;
     const flushProgress = () => {
+      const now = Date.now();
+      if (now - lastFlushAt < FLUSH_INTERVAL_MS) return;
+      lastFlushAt = now;
       prisma.testRun
         .update({ where: { id: testRunId }, data: { passedCases: passed, failedCases: failed, errorCases: errored } })
         .catch(() => {});

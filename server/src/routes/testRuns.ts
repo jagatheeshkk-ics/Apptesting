@@ -106,6 +106,21 @@ export async function testRunRoutes(app: FastifyInstance) {
     if (!body.targetUrl) return reply.code(400).send({ error: "targetUrl is required" });
     if (!body.moduleName?.trim()) return reply.code(400).send({ error: "moduleName is required" });
 
+    // Two runs against the same target executing concurrently double up on
+    // Playwright/DB load (each run does several test cases in parallel
+    // already) without any real benefit — that's saturated the pooled DB
+    // connection limit and made unrelated requests crawl in practice. Block
+    // starting a new one until the in-flight run for this target finishes.
+    const activeRun = await prisma.testRun.findFirst({
+      where: { targetUrl: body.targetUrl, status: { in: ["crawling", "generating", "executing"] } },
+      select: { id: true, status: true },
+    });
+    if (activeRun) {
+      return reply.code(409).send({
+        error: `A test run (${activeRun.id}) is already ${activeRun.status} against this target URL. Wait for it to finish before starting another.`,
+      });
+    }
+
     let enabledCategories: TestCategory[] | null = null;
     if (body.enabledCategories !== undefined) {
       if (!Array.isArray(body.enabledCategories) || !body.enabledCategories.every(isTestCategory)) {
