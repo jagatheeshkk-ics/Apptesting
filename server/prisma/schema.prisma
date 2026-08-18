@@ -116,7 +116,7 @@ model TestRun {
   projectId   String?
   project     Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
   mode        String    @default("full") // full | quick (only re-run cases that failed last time, plus smoke)
-  status      String    @default("pending") // pending | crawling | generating | executing | completed | failed
+  status      String    @default("pending") // pending | crawling | generating | executing | cancelling | cancelled | completed | failed
   error       String?
   startedAt   DateTime  @default(now())
   completedAt DateTime?

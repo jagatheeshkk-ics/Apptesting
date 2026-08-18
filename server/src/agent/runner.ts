@@ -34,6 +34,22 @@ export const REPORT_DIR = path.join(__dirname, "..", "..", "storage", "reports")
 // or the target app doesn't tolerate concurrent requests well.
 const EXECUTION_CONCURRENCY = Math.max(1, Number(process.env.TEST_EXECUTION_CONCURRENCY) || 4);
 
+// In-memory set of testRunIds with a pending stop request. Checked between
+// test cases/flows (not mid-case) so an in-flight browser action always
+// finishes cleanly rather than being torn down half-way through — a case
+// that's already running completes and records its result, but no further
+// case/flow starts afterward. Cleared once runTestRun() returns, whichever
+// way it ends.
+const cancelRequests = new Set<string>();
+
+export function requestCancellation(testRunId: string): void {
+  cancelRequests.add(testRunId);
+}
+
+function isCancellationRequested(testRunId: string): boolean {
+  return cancelRequests.has(testRunId);
+}
+
 // A saved TestFlow and an AI-generated custom test story both boil down to
 // "run this ordered sequence of steps and record the outcome" — this shape
 // lets both be executed through the same pooled loop.
@@ -48,11 +64,19 @@ interface StoryFlowLike {
 }
 
 // Runs `worker` over every item in `items`, at most `concurrency` at a time,
-// using `pages[i]` for whichever items land on lane i.
-async function runPooled<T>(items: T[], pages: Page[], worker: (item: T, page: Page) => Promise<void>): Promise<void> {
+// using `pages[i]` for whichever items land on lane i. Stops pulling new
+// items (without interrupting one already in progress) once `shouldStop`
+// returns true.
+async function runPooled<T>(
+  items: T[],
+  pages: Page[],
+  shouldStop: () => boolean,
+  worker: (item: T, page: Page) => Promise<void>,
+): Promise<void> {
   let cursor = 0;
   const lane = async (page: Page) => {
     while (true) {
+      if (shouldStop()) return;
       const idx = cursor++;
       if (idx >= items.length) return;
       await worker(items[idx], page);
@@ -165,6 +189,16 @@ export async function runTestRun(
     }
     const moduleByName = new Map<string, DetectedModule>(modules.map((m) => [m.name, m]));
     const moduleRecordByName = new Map(moduleRecords.map((m) => [m.name, m]));
+
+    // The crawl itself doesn't check for a stop request (it has no natural
+    // per-case checkpoint), so catch a cancellation that arrived during it
+    // here rather than pressing on into case generation/execution.
+    if (isCancellationRequested(testRunId)) {
+      await context.close();
+      await browser.close();
+      await prisma.testRun.update({ where: { id: testRunId }, data: { status: "cancelled", completedAt: new Date() } });
+      return;
+    }
 
     await prisma.testRun.update({ where: { id: testRunId }, data: { status: "generating" } });
 
@@ -290,7 +324,7 @@ export async function runTestRun(
     const casesConcurrency = Math.min(EXECUTION_CONCURRENCY, Math.max(generated.length, 1));
     const casePages = await Promise.all(Array.from({ length: casesConcurrency }, () => context.newPage()));
 
-    await runPooled(generated, casePages, async (tc, page) => {
+    await runPooled(generated, casePages, () => isCancellationRequested(testRunId), async (tc, page) => {
       const module = moduleByName.get(tc.moduleName);
       const moduleRecord = moduleRecordByName.get(tc.moduleName);
       if (!module) return;
@@ -404,7 +438,7 @@ export async function runTestRun(
             ...(await Promise.all(Array.from({ length: flowConcurrency - casePages.length }, () => context.newPage()))),
           ];
 
-    await runPooled(flowItems, flowPages, async (item, page) => {
+    await runPooled(flowItems, flowPages, () => isCancellationRequested(testRunId), async (item, page) => {
       const caseRecord = await prisma.testCase.create({
         data: {
           testRunId,
@@ -484,7 +518,7 @@ export async function runTestRun(
 
     const finished = await prisma.testRun.update({
       where: { id: testRunId },
-      data: { status: "completed", completedAt: new Date() },
+      data: { status: isCancellationRequested(testRunId) ? "cancelled" : "completed", completedAt: new Date() },
     });
 
     const regressions = await computeRegressions(testRunId);
@@ -500,5 +534,7 @@ export async function runTestRun(
       where: { id: testRunId },
       data: { status: "failed", error: (err as Error).message, completedAt: new Date() },
     });
+  } finally {
+    cancelRequests.delete(testRunId);
   }
 }

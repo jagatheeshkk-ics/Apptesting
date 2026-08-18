@@ -83,7 +83,12 @@ a login account), and the agent will:
    boundary to unit-test.
 3. **Execute every case** with a real browser (Playwright) or, for stress
    tests, concurrent HTTP requests — capturing a screenshot and
-   timing/observed-behavior evidence for each one.
+   timing/observed-behavior evidence for each one. A run in progress can be
+   **stopped** from its detail page: it finishes whatever case is already
+   executing, records everything gathered so far, and ends the run as
+   `cancelled` instead of running the rest of the queue. Starting a second
+   run against a target that already has one crawling/generating/executing
+   is blocked until the first one finishes or is stopped.
 4. **Produce a detailed HTML test report** per run, with embedded screenshots
    and a regression summary. Every test case shows its **type** (positive —
    valid input/normal usage, or negative — invalid/malicious input expected
