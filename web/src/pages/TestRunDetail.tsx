@@ -13,6 +13,12 @@ const CATEGORY_LABEL: Record<string, string> = {
 
 const GENERIC_CATEGORIES = ["smoke", "boundary", "vulnerability", "loginBoundary", "compatibility", "accessibility"] as const;
 
+// Statuses during which the Stop control is shown at all — once the run
+// reaches any other status it's already finished. "cancelling" is included
+// so the button stays visible (disabled) while a stop request is winding
+// down, rather than disappearing until the run fully stops.
+const STOPPABLE_STATUSES = ["pending", "crawling", "generating", "executing", "cancelling"];
+
 // Shared by both saved Flows and AI-generated custom test stories — both
 // are a named sequence of steps with an overall expected/actual outcome.
 function FlowLikeSection({ title, cases }: { title: string; cases: TestCase[] }) {
@@ -81,6 +87,8 @@ function FlowLikeSection({ title, cases }: { title: string; cases: TestCase[] })
 export default function TestRunDetail() {
   const { id } = useParams();
   const [run, setRun] = useState<TestRunDetailType | null>(null);
+  const [stopping, setStopping] = useState(false);
+  const [stopError, setStopError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -89,6 +97,20 @@ export default function TestRunDetail() {
     const t = setInterval(load, 3000);
     return () => clearInterval(t);
   }, [id]);
+
+  async function handleStop() {
+    if (!id) return;
+    setStopping(true);
+    setStopError(null);
+    try {
+      const updated = await api.stopTestRun(id);
+      setRun((prev) => (prev ? { ...prev, status: updated.status } : prev));
+    } catch (err) {
+      setStopError(err instanceof Error ? err.message : "Failed to stop the run.");
+    } finally {
+      setStopping(false);
+    }
+  }
 
   if (!run) return <p>Loading…</p>;
 
@@ -119,7 +141,17 @@ export default function TestRunDetail() {
         )}
         <p>
           Status: <span className={`badge ${run.status}`}>{run.status}</span> &nbsp; Mode: <strong>{run.mode}</strong>
+          {STOPPABLE_STATUSES.includes(run.status) && (
+            <>
+              {" "}
+              &nbsp;
+              <button type="button" onClick={handleStop} disabled={stopping || run.status === "cancelling"}>
+                {stopping || run.status === "cancelling" ? "Stopping…" : "Stop test run"}
+              </button>
+            </>
+          )}
         </p>
+        {stopError && <p style={{ color: "#cf222e" }}>{stopError}</p>}
         <p>
           {run.passedCases} passed / {run.failedCases} failed / {run.errorCases} errors (of {run.totalCases} total)
         </p>

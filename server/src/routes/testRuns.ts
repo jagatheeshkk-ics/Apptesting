@@ -1,6 +1,6 @@
 import { FastifyInstance } from "fastify";
 import { prisma } from "../db.js";
-import { runTestRun } from "../agent/runner.js";
+import { requestCancellation, runTestRun } from "../agent/runner.js";
 import { getCurrentUsername } from "../auth/currentUser.js";
 import { buildTestRunXlsx } from "../report/xlsxReportBuilder.js";
 import { TestCategory } from "../types.js";
@@ -112,7 +112,7 @@ export async function testRunRoutes(app: FastifyInstance) {
     // connection limit and made unrelated requests crawl in practice. Block
     // starting a new one until the in-flight run for this target finishes.
     const activeRun = await prisma.testRun.findFirst({
-      where: { targetUrl: body.targetUrl, status: { in: ["crawling", "generating", "executing"] } },
+      where: { targetUrl: body.targetUrl, status: { in: ["crawling", "generating", "executing", "cancelling"] } },
       select: { id: true, status: true },
     });
     if (activeRun) {
@@ -174,5 +174,25 @@ export async function testRunRoutes(app: FastifyInstance) {
     });
 
     return reply.code(202).send(run);
+  });
+
+  app.post("/api/test-runs/:id/stop", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const run = await prisma.testRun.findUnique({ where: { id }, select: { status: true } });
+    if (!run) return reply.code(404).send({ error: "not found" });
+
+    const activeStatuses = ["pending", "crawling", "generating", "executing"];
+    if (!activeStatuses.includes(run.status)) {
+      return reply.code(409).send({ error: `Cannot stop a run that is already ${run.status}.` });
+    }
+
+    // Signals the in-process runner to stop pulling new cases/flows; it
+    // finishes whatever's already in flight and transitions the run to
+    // "cancelled" itself once it winds down (see runner.ts). Mark
+    // "cancelling" here immediately so the UI reflects the request right
+    // away instead of waiting for the runner to notice.
+    requestCancellation(id);
+    const updated = await prisma.testRun.update({ where: { id }, data: { status: "cancelling" } });
+    return reply.code(202).send(updated);
   });
 }

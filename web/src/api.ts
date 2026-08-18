@@ -436,6 +436,7 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     }).then((r) => json<TestRun>(r)),
+  stopTestRun: (id: string) => fetch(`${BASE}/test-runs/${id}/stop`, { method: "POST" }).then((r) => json<TestRun>(r)),
 
   analyzeUrl: (data: { targetUrl: string; accountId?: string; username?: string; password?: string }) =>
     fetch(`${BASE}/analyze`, {
