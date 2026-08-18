@@ -169,6 +169,13 @@ export default function TestRunDetail() {
         {run.error && <p style={{ color: "#cf222e" }}>Error: {run.error}</p>}
       </div>
 
+      {run.narrativeSummary && (
+        <div className="card">
+          <h3>Summary</h3>
+          <p style={{ fontSize: 15, lineHeight: 1.6 }}>{run.narrativeSummary}</p>
+        </div>
+      )}
+
       {!!run.modules?.length && (
         <div className="card">
           <h3>Pages/forms discovered</h3>

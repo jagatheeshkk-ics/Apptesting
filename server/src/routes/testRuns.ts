@@ -3,6 +3,8 @@ import { prisma } from "../db.js";
 import { requestCancellation, runTestRun } from "../agent/runner.js";
 import { getCurrentUsername } from "../auth/currentUser.js";
 import { buildTestRunXlsx } from "../report/xlsxReportBuilder.js";
+import { buildNarrativeSummary } from "../report/narrativeSummary.js";
+import { RegressionSummary } from "../analysis/regression.js";
 import { TestCategory } from "../types.js";
 
 const TEST_CATEGORIES: TestCategory[] = [
@@ -59,10 +61,28 @@ export async function testRunRoutes(app: FastifyInstance) {
       },
     });
     if (!run) return reply.code(404).send({ error: "not found" });
+    const regressions: RegressionSummary | null = run.regressionsJson ? JSON.parse(run.regressionsJson) : null;
     return {
       ...withParsedModules(run),
-      regressions: run.regressionsJson ? JSON.parse(run.regressionsJson) : null,
+      regressions,
       enabledCategories: run.enabledCategoriesJson ? JSON.parse(run.enabledCategoriesJson) : null,
+      narrativeSummary: buildNarrativeSummary(
+        {
+          targetUrl: run.targetUrl,
+          moduleName: run.moduleName,
+          mode: run.mode,
+          totalCases: run.totalCases,
+          passedCases: run.passedCases,
+          failedCases: run.failedCases,
+          errorCases: run.errorCases,
+        },
+        run.testCases.map((tc) => ({
+          category: tc.category,
+          name: tc.name,
+          result: tc.result ? { status: tc.result.status, severity: tc.result.severity } : null,
+        })),
+        regressions,
+      ),
     };
   });
 

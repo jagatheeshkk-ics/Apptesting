@@ -215,6 +215,7 @@ export interface TestRunDetail extends TestRun {
   regressions: RegressionSummary | null;
   modules: RunModule[];
   enabledCategories: TestCategory[] | null;
+  narrativeSummary: string;
 }
 
 export interface AccountKpi {
