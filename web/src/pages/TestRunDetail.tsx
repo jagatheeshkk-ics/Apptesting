@@ -6,11 +6,12 @@ const CATEGORY_LABEL: Record<string, string> = {
   smoke: "Smoke tests",
   boundary: "Boundary value tests",
   vulnerability: "Vulnerability tests",
+  loginBoundary: "Login boundary tests (BVA)",
   compatibility: "Compatibility tests",
   accessibility: "Accessibility tests",
 };
 
-const GENERIC_CATEGORIES = ["smoke", "boundary", "vulnerability", "compatibility", "accessibility"] as const;
+const GENERIC_CATEGORIES = ["smoke", "boundary", "vulnerability", "loginBoundary", "compatibility", "accessibility"] as const;
 
 // Shared by both saved Flows and AI-generated custom test stories — both
 // are a named sequence of steps with an overall expected/actual outcome.
@@ -95,6 +96,7 @@ export default function TestRunDetail() {
     smoke: [],
     boundary: [],
     vulnerability: [],
+    loginBoundary: [],
     stress: [],
     performance: [],
     compatibility: [],

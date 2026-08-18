@@ -36,6 +36,7 @@ export async function buildHtmlReport(testRunId: string, reportDir: string, scre
     smoke: [],
     boundary: [],
     vulnerability: [],
+    loginBoundary: [],
     stress: [],
     performance: [],
     compatibility: [],
@@ -235,6 +236,7 @@ export async function buildHtmlReport(testRunId: string, reportDir: string, scre
   ${sectionHtml("Smoke tests", byCategory.smoke)}
   ${sectionHtml("Boundary value tests", byCategory.boundary)}
   ${sectionHtml("Vulnerability tests", byCategory.vulnerability)}
+  ${sectionHtml("Login boundary tests (BVA)", byCategory.loginBoundary)}
   ${stressSectionHtml(byCategory.stress)}
   ${performanceSectionHtml(byCategory.performance)}
   ${sectionHtml("Compatibility tests", byCategory.compatibility)}

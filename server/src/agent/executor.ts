@@ -3,7 +3,7 @@ import path from "node:path";
 import { Page } from "playwright";
 import { DetectedField, DetectedModule, ExecutedResult, GeneratedTestCase } from "../types.js";
 
-const SQL_ERROR_PATTERNS = [
+export const SQL_ERROR_PATTERNS = [
   /sql syntax/i,
   /mysql_fetch/i,
   /ora-\d{5}/i,

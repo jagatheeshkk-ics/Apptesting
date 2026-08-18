@@ -163,7 +163,7 @@ model TestCase {
   module      Module? @relation(fields: [moduleId], references: [id])
   testFlowId  String?
   testFlow    TestFlow? @relation(fields: [testFlowId], references: [id])
-  category    String // smoke | boundary | vulnerability | stress | performance | compatibility | accessibility | flow
+  category    String // smoke | boundary | vulnerability | loginBoundary | stress | performance | compatibility | accessibility | flow | story
   name        String
   description String
   inputJson   String? // JSON-encoded input(s) used for this case
