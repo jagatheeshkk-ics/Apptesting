@@ -22,6 +22,7 @@ export async function buildTestRunXlsx(testRunId: string): Promise<Buffer> {
     smoke: [],
     boundary: [],
     vulnerability: [],
+    loginBoundary: [],
     stress: [],
     performance: [],
     compatibility: [],
@@ -98,6 +99,7 @@ export async function buildTestRunXlsx(testRunId: string): Promise<Buffer> {
     ...byCategory.smoke,
     ...byCategory.boundary,
     ...byCategory.vulnerability,
+    ...byCategory.loginBoundary,
     ...byCategory.compatibility,
     ...byCategory.accessibility,
   ];

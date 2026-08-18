@@ -101,7 +101,10 @@ async function extractFieldsFromForm(page: Page, formSelector: string): Promise<
   );
 }
 
-const USER_FIELD_SELECTORS = [
+// Exported so other login-flow-aware code (loginBoundaryExecutor.ts) can
+// drive the same two-step username -> submit -> password flow without
+// duplicating these selectors.
+export const USER_FIELD_SELECTORS = [
   'input[type="email"]',
   'input[name*="user" i]',
   'input[name*="email" i]',
@@ -110,12 +113,12 @@ const USER_FIELD_SELECTORS = [
   'input[id*="email" i]',
   'input[id*="login" i]',
 ];
-const PASSWORD_FIELD_SELECTOR = 'input[type="password"]';
+export const PASSWORD_FIELD_SELECTOR = 'input[type="password"]';
 // Covers native form submission (button[type=submit]) plus common submit
 // button labels for apps that handle the click in JS instead — "Proceed"
 // seen on a real staging login page prompted adding it here alongside the
 // more common "Log in"/"Sign in"/"Next"/"Continue".
-const SUBMIT_SELECTOR =
+export const SUBMIT_SELECTOR =
   'button[type="submit"], input[type="submit"], button:has-text("Log in"), button:has-text("Sign in"), button:has-text("Next"), button:has-text("Continue"), button:has-text("Proceed"), button:has-text("Submit"), button:has-text("Enter")';
 
 // Collapses URL variants that point at the same page (trailing slash,
@@ -144,7 +147,7 @@ async function settleAfterNavigation(page: Page): Promise<void> {
   await page.waitForLoadState("networkidle", { timeout: 4000 }).catch(() => {});
 }
 
-async function findField(page: Page, selectors: string[]) {
+export async function findField(page: Page, selectors: string[]) {
   for (const sel of selectors) {
     const el = page.locator(sel).first();
     if (await el.count()) return el;
@@ -152,7 +155,7 @@ async function findField(page: Page, selectors: string[]) {
   return null;
 }
 
-async function clickSubmit(page: Page): Promise<boolean> {
+export async function clickSubmit(page: Page): Promise<boolean> {
   const btn = page.locator(SUBMIT_SELECTOR).first();
   if (!(await btn.count())) return false;
   await Promise.allSettled([page.waitForNavigation({ timeout: 8000 }), btn.click()]);

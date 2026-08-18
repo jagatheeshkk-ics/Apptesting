@@ -6,11 +6,13 @@ import { crawlAndIdentifyModules } from "./crawler.js";
 import { generateSmokeTests } from "./testGenerators/smoke.js";
 import { generateBoundaryTests } from "./testGenerators/boundary.js";
 import { generateVulnerabilityTests } from "./testGenerators/vulnerability.js";
+import { generateLoginBoundaryTests } from "./testGenerators/loginBoundary.js";
 import { generateStressTests } from "./testGenerators/stress.js";
 import { generatePerformanceTests } from "./testGenerators/performance.js";
 import { generateCompatibilityTests } from "./testGenerators/compatibility.js";
 import { generateAccessibilityTests } from "./testGenerators/accessibility.js";
 import { executeBoundaryCase, executeSmokeCase, executeVulnerabilityCase } from "./executor.js";
+import { executeLoginBoundaryCase } from "./loginBoundaryExecutor.js";
 import { executeStressCase } from "./stressExecutor.js";
 import { executePerformanceCase } from "./performanceExecutor.js";
 import { executeCompatibilityCase } from "./compatibilityExecutor.js";
@@ -64,11 +66,13 @@ async function buildGeneratedCases(
   mode: string,
   enabledCategories: TestCategory[] | null,
   run: { targetUrl: string; accountId: string | null; id: string },
+  credentials?: { username: string; password: string },
 ): Promise<GeneratedTestCase[]> {
   const allGenerated: GeneratedTestCase[] = [
     ...generateSmokeTests(modules),
     ...generateBoundaryTests(modules),
     ...generateVulnerabilityTests(modules),
+    ...generateLoginBoundaryTests(modules, credentials),
     ...generateStressTests(modules),
     ...generatePerformanceTests(modules),
     ...generateCompatibilityTests(modules),
@@ -166,11 +170,13 @@ export async function runTestRun(
 
     const enabledCategories = run.enabledCategoriesJson ? (JSON.parse(run.enabledCategoriesJson) as TestCategory[]) : null;
 
-    const generated = await buildGeneratedCases(modules, run.mode, enabledCategories, {
-      targetUrl: run.targetUrl,
-      accountId: run.accountId,
-      id: run.id,
-    });
+    const generated = await buildGeneratedCases(
+      modules,
+      run.mode,
+      enabledCategories,
+      { targetUrl: run.targetUrl, accountId: run.accountId, id: run.id },
+      credentialUsername && credentialPassword ? { username: credentialUsername, password: credentialPassword } : undefined,
+    );
 
     const matchingFlows =
       enabledCategories && !enabledCategories.includes("flow")
@@ -302,6 +308,8 @@ export async function runTestRun(
           result = await executeBoundaryCase(page, tc, module, SCREENSHOT_DIR);
         } else if (tc.category === "vulnerability") {
           result = await executeVulnerabilityCase(page, tc, module, SCREENSHOT_DIR);
+        } else if (tc.category === "loginBoundary") {
+          result = await executeLoginBoundaryCase(page, tc, module, SCREENSHOT_DIR);
         } else if (tc.category === "performance") {
           const perf = await executePerformanceCase(page, module, SCREENSHOT_DIR);
           result = perf.result;

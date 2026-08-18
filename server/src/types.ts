@@ -38,6 +38,7 @@ export type TestCategory =
   | "smoke"
   | "boundary"
   | "vulnerability"
+  | "loginBoundary"
   | "stress"
   | "performance"
   | "compatibility"
@@ -49,6 +50,7 @@ export const TEST_CATEGORY_LABELS: Record<TestCategory, string> = {
   smoke: "Smoke",
   boundary: "Boundary value",
   vulnerability: "Vulnerability (security)",
+  loginBoundary: "Login boundary (BVA)",
   stress: "Stress / load",
   performance: "Performance",
   compatibility: "Compatibility (viewport)",

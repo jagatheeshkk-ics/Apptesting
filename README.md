@@ -47,6 +47,15 @@ a login account), and the agent will:
    - **Vulnerability (security)** — reflected XSS, SQL injection, path
      traversal, template injection, missing security headers (non-destructive
      payloads only, for applications you own or are authorized to test).
+   - **Login boundary (BVA)** — business-rule checks specific to a
+     username/password login screen (single-step or the "username → Proceed
+     → password appears" two-step pattern): empty/whitespace/SQLi/XSS/unicode
+     in the username, an asymmetric trim rule (a padded valid username should
+     be trimmed and accepted; a padded password should be rejected, not
+     trimmed), case-insensitive username matching, password masking, and
+     empty/whitespace password rejection. Only generated when login
+     credentials were provided for the run, since several of these checks
+     require actually completing a real login to verify.
    - **Load & stress** — N concurrent requests against each page and form
      submission, measuring error rate and latency percentiles.
    - **Performance** — navigation timing (DOMContentLoaded/load) and page
@@ -96,8 +105,8 @@ a login account), and the agent will:
    agent performance KPIs (run duration, flow pass rate, findings over time).
    The **KPI dashboard**'s Overview panel gives a filterable summary: total
    test runs/cases, pass rate, and total issues found, broken down by test
-   type (smoke/boundary/vulnerability/stress/performance/compatibility/
-   accessibility/flow) and by day or week — filterable by Project, by
+   type (smoke/boundary/vulnerability/loginBoundary/stress/performance/
+   compatibility/accessibility/flow) and by day or week — filterable by Project, by
    Account (the "user" whose login was used for the run), and by date range.
 6. **Search test case results for a report** — filter across every run's test
    cases by date range and by module (pick one module or several), on the
