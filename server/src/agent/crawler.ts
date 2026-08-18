@@ -104,22 +104,34 @@ async function extractFieldsFromForm(page: Page, formSelector: string): Promise<
 // Exported so other login-flow-aware code (loginBoundaryExecutor.ts) can
 // drive the same two-step username -> submit -> password flow without
 // duplicating these selectors.
+//
+// All scoped to :visible — some two-step login implementations keep both
+// steps' fields/buttons in the DOM the whole time and just toggle CSS
+// visibility rather than mounting/unmounting them, so a plain "does this
+// selector match anything" check can't tell which step is actually on
+// screen (a hidden step-two password field would look "present" before
+// step one is even submitted, and filling/clicking a hidden element just
+// hangs waiting for it to become visible). Restricting to :visible from the
+// start means findField/clickSubmit only ever return something that's
+// actually interactable right now, regardless of which of the two
+// implementation styles the target app uses.
 export const USER_FIELD_SELECTORS = [
-  'input[type="email"]',
-  'input[name*="user" i]',
-  'input[name*="email" i]',
-  'input[name*="login" i]',
-  'input[id*="user" i]',
-  'input[id*="email" i]',
-  'input[id*="login" i]',
+  'input[type="email"]:visible',
+  'input[name*="user" i]:visible',
+  'input[name*="email" i]:visible',
+  'input[name*="login" i]:visible',
+  'input[id*="user" i]:visible',
+  'input[id*="email" i]:visible',
+  'input[id*="login" i]:visible',
 ];
-export const PASSWORD_FIELD_SELECTOR = 'input[type="password"]';
+export const PASSWORD_FIELD_SELECTOR = 'input[type="password"]:visible';
 // Covers native form submission (button[type=submit]) plus common submit
 // button labels for apps that handle the click in JS instead — "Proceed"
-// seen on a real staging login page prompted adding it here alongside the
-// more common "Log in"/"Sign in"/"Next"/"Continue".
+// and bare "Login" (no space) seen on a real staging login page prompted
+// adding those here alongside the more common "Log in"/"Sign in"/"Next"/
+// "Continue".
 export const SUBMIT_SELECTOR =
-  'button[type="submit"], input[type="submit"], button:has-text("Log in"), button:has-text("Sign in"), button:has-text("Next"), button:has-text("Continue"), button:has-text("Proceed"), button:has-text("Submit"), button:has-text("Enter")';
+  'button[type="submit"]:visible, input[type="submit"]:visible, button:visible:has-text("Log in"), button:visible:has-text("Login"), button:visible:has-text("Sign in"), button:visible:has-text("Next"), button:visible:has-text("Continue"), button:visible:has-text("Proceed"), button:visible:has-text("Submit"), button:visible:has-text("Enter")';
 
 // Collapses URL variants that point at the same page (trailing slash,
 // fragment) to one canonical string, so the same page reached via two
@@ -231,6 +243,30 @@ export function looksLikeLoginForm(fields: DetectedField[]): boolean {
   return userLike && fields.length <= 3;
 }
 
+// Extracts the login form on whatever page is currently loaded (the same
+// per-form field extraction the main crawl loop uses for every page) and
+// returns it as a module, or null if this page doesn't have a
+// login-shaped form. Used to capture the login form *before* attemptLogin
+// fills/submits it, since a successful login means the crawl loop below
+// will never visit this URL to discover it the normal way.
+async function extractLoginFormModule(page: Page, url: string): Promise<DetectedModule | null> {
+  const title = await page.title().catch(() => url);
+  const formSelectors = await page.$$eval("form", (forms) =>
+    forms.map((f, i) => (f.id ? `#${CSS.escape(f.id)}` : `form:nth-of-type(${i + 1})`)),
+  );
+  for (const formSelector of formSelectors) {
+    try {
+      const fields = await extractFieldsFromForm(page, formSelector);
+      if (fields.length && looksLikeLoginForm(fields)) {
+        return { name: `${title} — form ${formSelector}`, url, type: "form", fields, formSelector };
+      }
+    } catch {
+      // skip forms that fail to introspect
+    }
+  }
+  return null;
+}
+
 export async function crawlAndIdentifyModules(opts: CrawlOptions): Promise<CrawlResult> {
   const maxPages = opts.maxPages ?? 15;
   const maxDepth = opts.maxDepth ?? 2;
@@ -255,7 +291,12 @@ export async function crawlAndIdentifyModules(opts: CrawlOptions): Promise<Crawl
   await page.goto(opts.targetUrl, { waitUntil: "domcontentloaded" });
   await settleAfterNavigation(page);
 
+  // Captured *before* attemptLogin fills/submits the form (which mutates or
+  // navigates away from it), so it's still available afterward if login
+  // succeeds — see below for why that specific case needs it.
+  let preLoginFormModule: DetectedModule | null = null;
   if (opts.username && opts.password) {
+    preLoginFormModule = await extractLoginFormModule(page, opts.targetUrl);
     try {
       // attemptLogin logs the specific reason for any false result itself
       // (field not found, no submit control, still on the login form after
@@ -270,10 +311,22 @@ export async function crawlAndIdentifyModules(opts: CrawlOptions): Promise<Crawl
   // Start crawling from wherever we actually ended up (the authenticated
   // landing page after a successful login, or a same-URL redirect target)
   // rather than blindly re-fetching the original pre-login URL — otherwise
-  // a successful login's navigation gets thrown away, the crawl re-visits
-  // the anonymous login screen, and only the login form itself ever gets
-  // discovered/tested even though credentials were provided.
+  // a successful login's navigation gets thrown away and the crawl
+  // re-visits the anonymous login screen instead of what credentials were
+  // supplied to reach.
   const queue: { url: string; depth: number }[] = [{ url: normalizeUrl(page.url()), depth: 0 }];
+
+  // A successful login means the crawl above will never revisit the login
+  // page's URL (it starts from the post-login landing page instead), so the
+  // login form's own module — needed by generateLoginBoundaryTests, which
+  // requires exactly this successful-login scenario to run its checks —
+  // would otherwise never be recorded. On a failed login the crawl queue
+  // above still starts at the (rejected) login page, so the normal per-page
+  // loop below will capture it there instead; only add it here to avoid a
+  // duplicate module for the same form.
+  if (loggedIn && preLoginFormModule) {
+    modules.push(preLoginFormModule);
+  }
 
   while (queue.length && visited.size < maxPages) {
     const { url, depth } = queue.shift()!;

@@ -1,34 +1,15 @@
 import { Page } from "playwright";
 import { DetectedModule, ExecutedResult, GeneratedTestCase } from "../types.js";
 import { captureScreenshot, SQL_ERROR_PATTERNS } from "./executor.js";
-import { PASSWORD_FIELD_SELECTOR, SUBMIT_SELECTOR, USER_FIELD_SELECTORS, findField } from "./crawler.js";
+import { PASSWORD_FIELD_SELECTOR, SUBMIT_SELECTOR, USER_FIELD_SELECTORS, clickSubmit, findField } from "./crawler.js";
 
 // Unlike crawler.ts's attemptLogin (called once per crawl, right after a
 // fresh page.goto), this executor runs several of these checks back-to-back
-// on the *same* page without a full navigation between them. Some two-step
-// login implementations keep both steps' fields in the DOM the whole time
-// and just toggle visibility with CSS rather than mounting/unmounting them,
-// so a plain "does this selector match anything" check (as crawler.ts's
-// findField/clickSubmit do) can't tell which step is actually on screen —
-// it would report the password field as "present" even while step one is
-// still showing. Restricting every lookup here to the currently *visible*
-// match keeps each step's interactions scoped correctly. Also adds a bare
-// "Login" label alongside "Log in" — the real target login screen these
-// checks were modeled on (see qa_tests/test_mybas_login.py in the companion
-// apptesting_QATesting project) uses exactly that wording.
-const VISIBLE_USER_FIELD_SELECTORS = USER_FIELD_SELECTORS.map((s) => `${s}:visible`);
-const VISIBLE_PASSWORD_FIELD_SELECTOR = `${PASSWORD_FIELD_SELECTOR}:visible`;
-const VISIBLE_SUBMIT_SELECTOR = SUBMIT_SELECTOR.split(", ")
-  .map((s) => s.replace(/^(button|input)/, "$1:visible"))
-  .concat('button:visible:has-text("Login")')
-  .join(", ");
-
-async function clickVisibleSubmit(page: Page): Promise<boolean> {
-  const btn = page.locator(VISIBLE_SUBMIT_SELECTOR).first();
-  if (!(await btn.count())) return false;
-  await Promise.allSettled([page.waitForNavigation({ timeout: 8000 }), btn.click({ timeout: 5000 })]);
-  return true;
-}
+// on the *same* page without a full navigation between them — but that's
+// safe because USER_FIELD_SELECTORS/PASSWORD_FIELD_SELECTOR/SUBMIT_SELECTOR
+// (and therefore findField/clickSubmit) are already scoped to :visible, so
+// each step's interactions stay correctly scoped to whichever step is
+// actually on screen regardless of how many times this runs on one page.
 
 // Best-effort re-login with the real credentials after a check that
 // necessarily submits a wrong password (the padded-password check below) —
@@ -38,20 +19,20 @@ async function clickVisibleSubmit(page: Page): Promise<boolean> {
 async function reattemptRealLogin(page: Page, loginUrl: string, username: string, password: string): Promise<boolean> {
   try {
     await page.goto(loginUrl, { waitUntil: "domcontentloaded", timeout: 15000 }).catch(() => {});
-    const userField = await findField(page, VISIBLE_USER_FIELD_SELECTORS);
+    const userField = await findField(page, USER_FIELD_SELECTORS);
     if (!userField) return true; // no login form here (anymore) — nothing to restore
     await userField.fill(username);
-    let passField = await findField(page, [VISIBLE_PASSWORD_FIELD_SELECTOR]);
+    let passField = await findField(page, [PASSWORD_FIELD_SELECTOR]);
     if (!passField) {
-      await clickVisibleSubmit(page);
+      await clickSubmit(page);
       await page.waitForTimeout(500);
-      passField = await findField(page, [VISIBLE_PASSWORD_FIELD_SELECTOR]);
+      passField = await findField(page, [PASSWORD_FIELD_SELECTOR]);
       if (!passField) return false;
     }
     await passField.fill(password);
-    await clickVisibleSubmit(page);
+    await clickSubmit(page);
     await page.waitForTimeout(1000);
-    return !(await findField(page, [VISIBLE_PASSWORD_FIELD_SELECTOR]));
+    return !(await findField(page, [PASSWORD_FIELD_SELECTOR]));
   } catch {
     return false;
   }
@@ -72,7 +53,7 @@ export async function executeLoginBoundaryCase(
   try {
     await page.goto(module.url, { waitUntil: "domcontentloaded", timeout: 15000 });
 
-    const userField = await findField(page, VISIBLE_USER_FIELD_SELECTORS);
+    const userField = await findField(page, USER_FIELD_SELECTORS);
     if (!userField) {
       const screenshotPath = await captureScreenshot(page, screenshotDir);
       return {
@@ -84,15 +65,15 @@ export async function executeLoginBoundaryCase(
     }
     await userField.fill(username);
 
-    const proceedBtn = page.locator(VISIBLE_SUBMIT_SELECTOR).first();
+    const proceedBtn = page.locator(SUBMIT_SELECTOR).first();
     const proceedDisabled = (await proceedBtn.count()) > 0 && (await proceedBtn.isDisabled().catch(() => false));
     if (!proceedDisabled) {
-      await clickVisibleSubmit(page);
+      await clickSubmit(page);
       await page.waitForTimeout(500);
     }
 
     const content = await page.content();
-    const passField = await findField(page, [VISIBLE_PASSWORD_FIELD_SELECTOR]);
+    const passField = await findField(page, [PASSWORD_FIELD_SELECTOR]);
 
     if (testCase.name.includes("empty username") || testCase.name.includes("whitespace-only username")) {
       const blocked = proceedDisabled || !passField;
@@ -130,9 +111,9 @@ export async function executeLoginBoundaryCase(
         actual = "No password was available to complete this check.";
       } else {
         await passField.fill(password);
-        await clickVisibleSubmit(page);
+        await clickSubmit(page);
         await page.waitForTimeout(1000);
-        const stillOnLogin = await findField(page, [VISIBLE_PASSWORD_FIELD_SELECTOR]);
+        const stillOnLogin = await findField(page, [PASSWORD_FIELD_SELECTOR]);
         status = stillOnLogin ? "fail" : "pass";
         actual = stillOnLogin
           ? "Login did not complete with this username variant — the password field is still present after submitting."
@@ -159,13 +140,13 @@ export async function executeLoginBoundaryCase(
         actual = "Could not reach the password step to run this check.";
       } else {
         await passField.fill(password ?? "");
-        const loginBtn = page.locator(VISIBLE_SUBMIT_SELECTOR).first();
+        const loginBtn = page.locator(SUBMIT_SELECTOR).first();
         const loginDisabled = (await loginBtn.count()) > 0 && (await loginBtn.isDisabled().catch(() => false));
         if (!loginDisabled) {
-          await clickVisibleSubmit(page);
+          await clickSubmit(page);
           await page.waitForTimeout(500);
         }
-        const stillOnLogin = await findField(page, [VISIBLE_PASSWORD_FIELD_SELECTOR]);
+        const stillOnLogin = await findField(page, [PASSWORD_FIELD_SELECTOR]);
         status = loginDisabled || stillOnLogin ? "pass" : "fail";
         actual = loginDisabled
           ? "Login is disabled/blocked for empty/whitespace-only password input, as expected."
@@ -179,9 +160,9 @@ export async function executeLoginBoundaryCase(
         actual = "Could not reach the password step, or no password was available, to run this check.";
       } else {
         await passField.fill(password);
-        await clickVisibleSubmit(page);
+        await clickSubmit(page);
         await page.waitForTimeout(1000);
-        const stillOnLogin = await findField(page, [VISIBLE_PASSWORD_FIELD_SELECTOR]);
+        const stillOnLogin = await findField(page, [PASSWORD_FIELD_SELECTOR]);
         status = stillOnLogin ? "pass" : "fail";
         actual = stillOnLogin
           ? "Padded password was correctly rejected (not trimmed) — still on the login form."
