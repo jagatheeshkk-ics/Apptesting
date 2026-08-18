@@ -132,7 +132,7 @@ export default function TestRunDetail() {
 
   return (
     <div>
-      <h2>Test run: {run.targetUrl}</h2>
+      <h2 style={{ wordBreak: "break-all" }}>Test run: {run.targetUrl}</h2>
       <div className="card">
         {run.moduleName && (
           <p>
