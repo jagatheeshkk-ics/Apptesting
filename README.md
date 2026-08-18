@@ -89,7 +89,11 @@ a login account), and the agent will:
    `cancelled` instead of running the rest of the queue. Starting a second
    run against a target that already has one crawling/generating/executing
    is blocked until the first one finishes or is stopped.
-4. **Produce a detailed HTML test report** per run, with embedded screenshots
+4. **Produce a detailed HTML test report** per run — opening with a plain-English
+   narrative summary (what was tested, pass/fail counts, which areas had
+   issues, any high/critical security findings, and what changed vs. the
+   previous run), shown the same way on the run detail page and in the
+   Excel export's Summary sheet — with embedded screenshots
    and a regression summary. Every test case shows its **type** (positive —
    valid input/normal usage, or negative — invalid/malicious input expected
    to be rejected), its **expected result**, and its **actual result** side

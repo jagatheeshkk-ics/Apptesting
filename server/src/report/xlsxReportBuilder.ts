@@ -1,6 +1,8 @@
 import ExcelJS from "exceljs";
 import { prisma } from "../db.js";
 import { testTypesLabel } from "./reportBuilder.js";
+import { buildNarrativeSummary } from "./narrativeSummary.js";
+import { RegressionSummary } from "../analysis/regression.js";
 
 export async function buildTestRunXlsx(testRunId: string): Promise<Buffer> {
   const run = await prisma.testRun.findUniqueOrThrow({
@@ -75,12 +77,30 @@ export async function buildTestRunXlsx(testRunId: string): Promise<Buffer> {
     }
   };
 
+  const regressions: RegressionSummary | null = run.regressionsJson ? JSON.parse(run.regressionsJson) : null;
+  const narrativeSummary = buildNarrativeSummary(
+    {
+      targetUrl: run.targetUrl,
+      moduleName: run.moduleName,
+      mode: run.mode,
+      totalCases: run.totalCases,
+      passedCases: run.passedCases,
+      failedCases: run.failedCases,
+      errorCases: run.errorCases,
+    },
+    run.testCases.map((tc) => ({ category: tc.category, name: tc.name, result: tc.result ? { status: tc.result.status, severity: tc.result.severity } : null })),
+    regressions,
+  );
+
   const summary = wb.addWorksheet("Summary");
   summary.columns = [
     { header: "Field", key: "field", width: 22 },
     { header: "Value", key: "value", width: 70 },
   ];
   summary.getRow(1).font = { bold: true };
+  const summaryRow = summary.addRow({ field: "Summary", value: narrativeSummary });
+  summaryRow.alignment = { wrapText: true, vertical: "top" };
+  summaryRow.height = 60;
   summary.addRows([
     { field: "Module", value: run.moduleName ?? "—" },
     { field: "Target", value: run.targetUrl },

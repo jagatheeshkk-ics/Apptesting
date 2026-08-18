@@ -3,6 +3,7 @@ import path from "node:path";
 import { prisma } from "../db.js";
 import { RegressionSummary } from "../analysis/regression.js";
 import { escapeHtml, statusBadge, testTypeBadge } from "./htmlHelpers.js";
+import { buildNarrativeSummary } from "./narrativeSummary.js";
 import { ALL_TEST_CATEGORIES, TEST_CATEGORY_LABELS, TestCategory } from "../types.js";
 
 // "Full" when every category was selected (or no filter was applied at
@@ -50,6 +51,20 @@ export async function buildHtmlReport(testRunId: string, reportDir: string, scre
   const stressFindings = byCategory.stress.filter((tc) => tc.result?.status === "fail");
 
   const regressions: RegressionSummary | null = run.regressionsJson ? JSON.parse(run.regressionsJson) : null;
+
+  const narrativeSummary = buildNarrativeSummary(
+    {
+      targetUrl: run.targetUrl,
+      moduleName: run.moduleName,
+      mode: run.mode,
+      totalCases: run.totalCases,
+      passedCases: run.passedCases,
+      failedCases: run.failedCases,
+      errorCases: run.errorCases,
+    },
+    run.testCases.map((tc) => ({ category: tc.category, name: tc.name, result: tc.result ? { status: tc.result.status, severity: tc.result.severity } : null })),
+    regressions,
+  );
 
   const sectionHtml = (title: string, cases: typeof run.testCases) => {
     if (!cases.length) return "";
@@ -198,6 +213,7 @@ export async function buildHtmlReport(testRunId: string, reportDir: string, scre
   th { background: #f6f8fa; }
   .findings { background: #fff8f6; border: 1px solid #ffb3a3; border-radius: 8px; padding: 16px; margin-bottom: 24px; }
   .findings ul { margin: 4px 0; padding-left: 20px; font-size: 13px; }
+  .narrative-summary { font-size: 15px; line-height: 1.6; color: #1f2328; max-width: 780px; margin-bottom: 24px; }
 </style>
 </head>
 <body>
@@ -211,6 +227,8 @@ export async function buildHtmlReport(testRunId: string, reportDir: string, scre
     Run started: ${run.startedAt.toISOString()}<br/>
     Run completed: ${run.completedAt?.toISOString() ?? "—"}
   </div>
+
+  <p class="narrative-summary">${escapeHtml(narrativeSummary)}</p>
 
   <div class="summary">
     <div class="stat"><div class="n">${run.totalCases}</div><div class="l">Total cases</div></div>
