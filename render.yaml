@@ -32,6 +32,10 @@ services:
         value: "false"
       - key: AUTH_SECRET
         generateValue: true
+      # Only needed if a browser app on another origin calls this API with
+      # credentials — the bundled dashboard is same-origin and does not.
+      - key: CORS_ORIGINS
+        sync: false
       - key: SMTP_HOST
         sync: false
       - key: SMTP_PORT
