@@ -3,16 +3,17 @@ import { User, api } from "../api.js";
 
 interface LoginProps {
   onAuthenticated: (user: User) => void;
+  initialNotice?: string | null;
 }
 
-export default function Login({ onAuthenticated }: LoginProps) {
+export default function Login({ onAuthenticated, initialNotice }: LoginProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
   const [pendingUserId, setPendingUserId] = useState<string | null>(null);
   const [pendingEmail, setPendingEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(initialNotice ?? null);
   const [submitting, setSubmitting] = useState(false);
 
   async function onSubmitLogin(e: FormEvent) {
@@ -91,6 +92,7 @@ export default function Login({ onAuthenticated }: LoginProps) {
               <label>Password</label>
               <input required type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
             </div>
+            {notice && <p style={{ color: "#59636e" }}>{notice}</p>}
             {error && <p style={{ color: "#cf222e" }}>{error}</p>}
             <button className="primary" type="submit" disabled={submitting}>
               {submitting ? "Signing in…" : "Sign in"}

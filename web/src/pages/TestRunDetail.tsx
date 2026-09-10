@@ -60,6 +60,30 @@ export default function TestRunDetail() {
         {run.error && <p style={{ color: "#cf222e" }}>Error: {run.error}</p>}
       </div>
 
+      {!!run.modules?.length && (
+        <div className="card">
+          <h3>Modules &amp; user stories</h3>
+          {run.modules.map((m) => (
+            <div key={m.id} style={{ marginBottom: 14 }}>
+              <strong>
+                {m.name} <span style={{ fontWeight: 400, color: "#59636e" }}>({m.type})</span>
+              </strong>
+              {m.userStories.length ? (
+                <ul style={{ margin: "4px 0 0", paddingLeft: 20 }}>
+                  {m.userStories.map((s, i) => (
+                    <li key={i} style={{ fontSize: 13 }}>
+                      {s}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p style={{ margin: "4px 0 0", color: "#59636e", fontSize: 13 }}>No user stories recorded.</p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
       {regressions && regressions.previousRunId && (regressions.regressed.length || regressions.fixed.length) ? (
         <div className="card">
           <h3>Regression check vs. previous run</h3>

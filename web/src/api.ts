@@ -133,6 +133,47 @@ export type TestCategory =
   | "accessibility"
   | "flow";
 
+export const TEST_CATEGORY_LABELS: Record<TestCategory, string> = {
+  smoke: "Smoke",
+  boundary: "Boundary value",
+  vulnerability: "Vulnerability (security)",
+  stress: "Stress / load",
+  performance: "Performance",
+  compatibility: "Compatibility (viewport)",
+  accessibility: "Accessibility",
+  flow: "Flows (integration/UAT)",
+};
+
+export const ALL_TEST_CATEGORIES = Object.keys(TEST_CATEGORY_LABELS) as TestCategory[];
+
+export interface DetectedField {
+  name: string;
+  label?: string;
+  type: string;
+  required: boolean;
+  maxLength?: number;
+  minLength?: number;
+  min?: number;
+  max?: number;
+  options?: string[];
+}
+
+export interface AnalyzedModule {
+  name: string;
+  url: string;
+  type: "page" | "form" | "nav";
+  fields: DetectedField[];
+  userStories: string[];
+}
+
+export interface RunModule {
+  id: string;
+  name: string;
+  url: string;
+  type: string;
+  userStories: string[];
+}
+
 export interface TestCase {
   id: string;
   category: TestCategory;
@@ -161,6 +202,8 @@ export interface RegressionSummary {
 export interface TestRunDetail extends TestRun {
   testCases: TestCase[];
   regressions: RegressionSummary | null;
+  modules: RunModule[];
+  enabledCategories: TestCategory[] | null;
 }
 
 export interface AccountKpi {
@@ -195,6 +238,45 @@ export interface AgentPerformanceKpi {
   totalFlowRuns: number;
   flowPassRate: number | null;
   runsOverTime: { date: string; runs: number; vulnerabilities: number }[];
+}
+
+export interface CategoryIssueBreakdown {
+  category: TestCategory;
+  totalCases: number;
+  passedCases: number;
+  failedCases: number;
+  errorCases: number;
+  issues: number;
+}
+
+export interface DashboardTrendPoint {
+  period: string;
+  runs: number;
+  issues: number;
+}
+
+export interface DashboardSummary {
+  totalRuns: number;
+  totalCases: number;
+  passedCases: number;
+  failedCases: number;
+  errorCases: number;
+  passRate: number;
+  totalIssues: number;
+  issuesByCategory: CategoryIssueBreakdown[];
+  trend: DashboardTrendPoint[];
+  filterOptions: {
+    projects: { id: string; name: string }[];
+    accounts: { id: string; label: string }[];
+  };
+}
+
+export interface DashboardFilters {
+  projectId?: string; // pass "unassigned" for the Unassigned bucket
+  accountId?: string;
+  from?: string; // YYYY-MM-DD
+  to?: string; // YYYY-MM-DD
+  groupBy?: "day" | "week";
 }
 
 export type FlowAction =
@@ -323,16 +405,40 @@ export const api = {
 
   listTestRuns: () => fetch(`${BASE}/test-runs`).then((r) => json<TestRun[]>(r)),
   getTestRun: (id: string) => fetch(`${BASE}/test-runs/${id}`).then((r) => json<TestRunDetail>(r)),
-  createTestRun: (data: { targetUrl: string; accountId?: string; projectId?: string; mode?: "full" | "quick" }) =>
+  createTestRun: (data: {
+    targetUrl: string;
+    accountId?: string;
+    projectId?: string;
+    mode?: "full" | "quick";
+    enabledCategories?: TestCategory[];
+    moduleStories?: Record<string, string[]>;
+  }) =>
     fetch(`${BASE}/test-runs`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     }).then((r) => json<TestRun>(r)),
 
+  analyzeUrl: (data: { targetUrl: string; accountId?: string }) =>
+    fetch(`${BASE}/analyze`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    }).then((r) => json<{ modules: AnalyzedModule[] }>(r)),
+
   accountKpis: () => fetch(`${BASE}/kpi/accounts`).then((r) => json<AccountKpi[]>(r)),
   agentKpi: () => fetch(`${BASE}/kpi/agent`).then((r) => json<AgentPerformanceKpi>(r)),
   projectKpis: () => fetch(`${BASE}/kpi/projects`).then((r) => json<ProjectKpiSummary>(r)),
+  dashboardSummary: (filters: DashboardFilters) => {
+    const params = new URLSearchParams();
+    if (filters.projectId) params.set("projectId", filters.projectId);
+    if (filters.accountId) params.set("accountId", filters.accountId);
+    if (filters.from) params.set("from", filters.from);
+    if (filters.to) params.set("to", filters.to);
+    if (filters.groupBy) params.set("groupBy", filters.groupBy);
+    const qs = params.toString();
+    return fetch(`${BASE}/kpi/dashboard${qs ? `?${qs}` : ""}`).then((r) => json<DashboardSummary>(r));
+  },
 
   listFlows: () => fetch(`${BASE}/flows`).then((r) => json<TestFlow[]>(r)),
   createFlow: (data: {

@@ -1,7 +1,10 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
 export const SESSION_COOKIE = "apptesting_session";
-const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+// Sliding idle timeout: each authenticated request re-issues the token with
+// a fresh 30-minute window (see auth/gate.ts), so 30 minutes with no
+// requests expires the session server-side.
+const SESSION_TTL_MS = 30 * 60 * 1000;
 
 function getSecret(): string {
   const secret = process.env.AUTH_SECRET;
@@ -39,6 +42,18 @@ export function verifySessionToken(token: string): string | null {
   } catch {
     return null;
   }
+}
+
+// No maxAge/expires — a browser-session cookie. Fully closing the browser
+// (not just the tab) drops it, so the next visit needs a fresh login,
+// independent of the sliding idle window above.
+export function sessionCookieOptions() {
+  return {
+    httpOnly: true,
+    path: "/",
+    sameSite: "lax" as const,
+    secure: process.env.NODE_ENV === "production",
+  };
 }
 
 export function generateVerificationCode(): string {

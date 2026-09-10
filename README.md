@@ -3,9 +3,19 @@
 An AI-agent-driven application testing platform. Give it a URL (and, optionally,
 a login account), and the agent will:
 
-1. **Crawl the target application** and identify modules — pages, forms, and
-   input fields (with their type/length/range constraints).
-2. **Generate and execute test cases** across the testing pyramid:
+1. **Analyze the URL** — as soon as you enter one and move on, the agent
+   crawls the application, identifies its modules (pages, forms, fields), and
+   drafts a starting set of plain-language user stories for each module —
+   shown right under the URL field for you to edit, remove, or add to before
+   starting the run. Story drafting uses the free Gemini API when
+   `GEMINI_API_KEY` is set, falling back to simple templates otherwise (still fully editable
+   either way). Stories are documentation/traceability attached to each
+   module (shown on the run's detail page too) — they don't get parsed for
+   test steps. What actually drives test generation is the crawled
+   fields/forms/buttons for each module, filtered down to whichever
+   test-type checkboxes you selected.
+2. **Generate and execute test cases** across the testing pyramid — which
+   categories run is your choice, via checkboxes (default: all of them):
    - **Smoke** — pages load, forms render with all expected fields.
    - **Boundary value / negative** — empty/whitespace, min/max length, min/max
      numeric range, overflow, unicode, special characters, per detected field.
@@ -44,6 +54,11 @@ a login account), and the agent will:
    rate, vulnerabilities/accessibility/performance issues found), application
    usage/behavior KPIs (response times, errors, latency under load), and
    agent performance KPIs (run duration, flow pass rate, findings over time).
+   The **KPI dashboard**'s Overview panel gives a filterable summary: total
+   test runs/cases, pass rate, and total issues found, broken down by test
+   type (smoke/boundary/vulnerability/stress/performance/compatibility/
+   accessibility/flow) and by day or week — filterable by Project, by
+   Account (the "user" whose login was used for the run), and by date range.
 6. **Search test case results for a report** — filter across every run's test
    cases by date range and by module (pick one module or several), on the
    **Reports** dashboard page. Results show a pass/fail/error summary and can
@@ -72,9 +87,15 @@ web/      React + Vite dashboard
   URL, username/password, role). **Use dedicated test/QA credentials only** —
   passwords are stored so the agent can resubmit them into login forms.
 - `TestRun` — one agent run against a target URL, optionally as a given
-  account, in `full` or `quick` (sanity) mode. Carries a `regressionsJson`
-  diff against the previous run for the same target.
-- `Module` — a page or form discovered during the crawl.
+  account, in `full` or `quick` (sanity) mode. `enabledCategoriesJson` records
+  which test-type checkboxes were selected on the New Test Run page (`null`
+  means all categories — the default). Carries a `regressionsJson` diff
+  against the previous run for the same target.
+- `Module` — a page or form discovered during the crawl. `userStoriesJson`
+  holds its editable, plain-language user stories — auto-drafted when you
+  analyze a URL on the New Test Run page, then whatever you edited them to
+  before starting the run (or freshly auto-drafted at run time if you skipped
+  the analyze step for that module).
 - `TestCase` / `TestResult` — a generated case and its executed outcome
   (pass/fail/error, severity, screenshot, duration).
 - `StressMetric` / `PerformanceMetric` — concurrency/latency and page-weight
@@ -112,6 +133,20 @@ Flow once enabled:
 3. Every login after that first successful verification is just email +
    password — no extra step.
 
+Session lifetime, once signed in:
+- **30-minute idle timeout.** The session cookie carries a 30-minute
+  expiry that's refreshed on every authenticated request (server side,
+  `server/src/auth/gate.ts`), and the dashboard independently starts its
+  own 30-minute timer on mount that resets on mouse/keyboard/touch/scroll
+  activity (`web/src/App.tsx`) — so 30 minutes with no activity signs the
+  user out and returns them to the login screen with an explanatory
+  message, even if a background poll (e.g. a running test's status check)
+  would otherwise have kept the server-side session alive.
+- **Signed out on browser close.** The session cookie has no `Max-Age` —
+  it's a browser-session cookie, so fully closing the browser (not just
+  the tab) drops it, and the next visit needs a fresh login regardless of
+  the 30-minute window.
+
 Required when `AUTH_ENABLED=true`:
 - `AUTH_SECRET` — a long random string used to sign session cookies. The
   server refuses to start with `AUTH_ENABLED=true` and no `AUTH_SECRET`.
@@ -138,6 +173,18 @@ Users needs roles for its role picker); restricting them would break
 those dropdowns for users permitted on the page using the dropdown but
 not on the page that owns that data. Mutations on those same resources
 (create/edit/delete) stay gated as normal.
+
+### AI-generated user stories
+
+Set `GEMINI_API_KEY` (a free API key from [Google AI Studio](https://aistudio.google.com/apikey))
+to have the New Test Run page's user-story drafts written by Gemini
+(`gemini-2.5-flash`) instead of the built-in templates. Without a
+key, story drafting still works — it just uses the simpler templates in
+`server/src/agent/userStoryGenerator.ts`. Either way, stories are fully
+editable before you start a run, and the AI call has a 15s timeout with no
+retries and falls straight back to the templates on any error (bad key,
+rate limit, network issue, malformed response), so a flaky or missing key
+never blocks analyzing a URL or starting a run.
 
 ## Database (Supabase)
 

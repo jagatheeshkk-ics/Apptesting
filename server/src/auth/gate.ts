@@ -1,6 +1,6 @@
 import { FastifyInstance } from "fastify";
 import { prisma } from "../db.js";
-import { SESSION_COOKIE, verifySessionToken } from "./session.js";
+import { SESSION_COOKIE, createSessionToken, sessionCookieOptions, verifySessionToken } from "./session.js";
 import { PageKey } from "../access/pages.js";
 
 // Paths reachable without a session even when AUTH_ENABLED=true.
@@ -23,6 +23,7 @@ interface RouteRule {
 // screen — including mutations on those same resources — is gated.
 const ROUTE_RULES: RouteRule[] = [
   { method: "POST", prefix: "/api/test-runs", page: "new-test-run" },
+  { method: "POST", prefix: "/api/analyze", page: "new-test-run" },
   { method: "GET", prefix: "/api/test-runs", page: "test-runs" },
   { method: "*", prefix: "/api/kpi/projects", page: "projects" },
   { method: "POST", prefix: "/api/projects", page: "projects" },
@@ -38,6 +39,7 @@ const ROUTE_RULES: RouteRule[] = [
   { method: "*", prefix: "/api/reports", page: "reports" },
   { method: "*", prefix: "/api/kpi/accounts", page: "kpi" },
   { method: "*", prefix: "/api/kpi/agent", page: "kpi" },
+  { method: "*", prefix: "/api/kpi/dashboard", page: "kpi" },
 ];
 
 function matchRule(method: string, url: string): PageKey | null {
@@ -61,6 +63,10 @@ export function registerAuthGate(app: FastifyInstance) {
     if (!userId) {
       return reply.code(401).send({ error: "authentication required" });
     }
+
+    // Sliding idle timeout: every authenticated request extends the
+    // 30-minute window, so it only expires after genuine inactivity.
+    reply.setCookie(SESSION_COOKIE, createSessionToken(userId), sessionCookieOptions());
 
     const requiredPage = matchRule(req.method, req.url);
     if (!requiredPage) return;

@@ -2,16 +2,18 @@ import { FastifyInstance } from "fastify";
 import { prisma } from "../db.js";
 import { hashPassword, verifyPassword } from "../auth/password.js";
 import { sendVerificationEmail } from "../auth/mailer.js";
-import { SESSION_COOKIE, createSessionToken, generateVerificationCode, verifySessionToken } from "../auth/session.js";
+import {
+  SESSION_COOKIE,
+  createSessionToken,
+  generateVerificationCode,
+  sessionCookieOptions,
+  verifySessionToken,
+} from "../auth/session.js";
 import { toPublicUser } from "../auth/publicUser.js";
 
 const CODE_TTL_MS = 15 * 60 * 1000;
 const RESEND_COOLDOWN_MS = 60 * 1000;
 const MAX_VERIFY_ATTEMPTS = 5;
-
-function isProduction() {
-  return process.env.NODE_ENV === "production";
-}
 
 async function issueVerificationCode(userId: string, email: string) {
   const code = generateVerificationCode();
@@ -59,13 +61,7 @@ export async function authRoutes(app: FastifyInstance) {
     }
 
     const token = createSessionToken(user.id);
-    reply.setCookie(SESSION_COOKIE, token, {
-      httpOnly: true,
-      path: "/",
-      sameSite: "lax",
-      secure: isProduction(),
-      maxAge: 30 * 24 * 60 * 60,
-    });
+    reply.setCookie(SESSION_COOKIE, token, sessionCookieOptions());
     return { status: "ok", user: toPublicUser(user) };
   });
 
@@ -106,13 +102,7 @@ export async function authRoutes(app: FastifyInstance) {
     });
 
     const token = createSessionToken(updated.id);
-    reply.setCookie(SESSION_COOKIE, token, {
-      httpOnly: true,
-      path: "/",
-      sameSite: "lax",
-      secure: isProduction(),
-      maxAge: 30 * 24 * 60 * 60,
-    });
+    reply.setCookie(SESSION_COOKIE, token, sessionCookieOptions());
     return { status: "ok", user: toPublicUser(updated) };
   });
 
