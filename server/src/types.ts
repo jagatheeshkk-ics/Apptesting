@@ -38,11 +38,30 @@ export type TestCategory =
   | "smoke"
   | "boundary"
   | "vulnerability"
+  | "loginBoundary"
   | "stress"
   | "performance"
   | "compatibility"
   | "accessibility"
-  | "flow";
+  | "flow"
+  | "story";
+
+export const TEST_CATEGORY_LABELS: Record<TestCategory, string> = {
+  smoke: "Smoke",
+  boundary: "Boundary value",
+  vulnerability: "Vulnerability (security)",
+  loginBoundary: "Login boundary (BVA)",
+  stress: "Stress / load",
+  performance: "Performance",
+  compatibility: "Compatibility (viewport)",
+  accessibility: "Accessibility",
+  flow: "Flows (integration/UAT)",
+  story: "Custom test stories",
+};
+
+export const ALL_TEST_CATEGORIES = Object.keys(TEST_CATEGORY_LABELS) as TestCategory[];
+
+export type TestType = "positive" | "negative";
 
 export interface GeneratedTestCase {
   category: TestCategory;
@@ -53,6 +72,9 @@ export interface GeneratedTestCase {
   // For boundary/vulnerability cases run against a specific field
   targetField?: string;
   expectation: string;
+  // positive = valid input / normal expected usage; negative = invalid or
+  // malicious input, expected to be rejected/handled safely
+  testType: TestType;
 }
 
 export interface ViewportPreset {

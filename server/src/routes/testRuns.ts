@@ -1,17 +1,23 @@
 import { FastifyInstance } from "fastify";
 import { prisma } from "../db.js";
-import { runTestRun } from "../agent/runner.js";
+import { requestCancellation, runTestRun } from "../agent/runner.js";
+import { getCurrentUsername } from "../auth/currentUser.js";
+import { buildTestRunXlsx } from "../report/xlsxReportBuilder.js";
+import { buildNarrativeSummary } from "../report/narrativeSummary.js";
+import { RegressionSummary } from "../analysis/regression.js";
 import { TestCategory } from "../types.js";
 
 const TEST_CATEGORIES: TestCategory[] = [
   "smoke",
   "boundary",
   "vulnerability",
+  "loginBoundary",
   "stress",
   "performance",
   "compatibility",
   "accessibility",
   "flow",
+  "story",
 ];
 
 function isTestCategory(value: unknown): value is TestCategory {
@@ -55,11 +61,41 @@ export async function testRunRoutes(app: FastifyInstance) {
       },
     });
     if (!run) return reply.code(404).send({ error: "not found" });
+    const regressions: RegressionSummary | null = run.regressionsJson ? JSON.parse(run.regressionsJson) : null;
     return {
       ...withParsedModules(run),
-      regressions: run.regressionsJson ? JSON.parse(run.regressionsJson) : null,
+      regressions,
       enabledCategories: run.enabledCategoriesJson ? JSON.parse(run.enabledCategoriesJson) : null,
+      narrativeSummary: buildNarrativeSummary(
+        {
+          targetUrl: run.targetUrl,
+          moduleName: run.moduleName,
+          mode: run.mode,
+          totalCases: run.totalCases,
+          passedCases: run.passedCases,
+          failedCases: run.failedCases,
+          errorCases: run.errorCases,
+        },
+        run.testCases.map((tc) => ({
+          category: tc.category,
+          name: tc.name,
+          result: tc.result ? { status: tc.result.status, severity: tc.result.severity } : null,
+        })),
+        regressions,
+      ),
     };
+  });
+
+  app.get("/api/test-runs/:id/report.xlsx", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const run = await prisma.testRun.findUnique({ where: { id }, select: { id: true } });
+    if (!run) return reply.code(404).send({ error: "not found" });
+
+    const buffer = await buildTestRunXlsx(id);
+    reply
+      .header("Content-Disposition", `attachment; filename="test-run-${id}.xlsx"`)
+      .type("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+      .send(buffer);
   });
 
   app.post("/api/test-runs", async (req, reply) => {
@@ -69,9 +105,41 @@ export async function testRunRoutes(app: FastifyInstance) {
       projectId?: string;
       mode?: "full" | "quick";
       enabledCategories?: unknown;
-      moduleStories?: Record<string, string[]>;
+      // Tester-entered business module name (e.g. "Payroll") this run is
+      // testing — required, independent of whatever titles the crawler
+      // finds on the page.
+      moduleName?: string;
+      // Freeform QA scenarios in plain English, typed on the New Test Run
+      // page for that module — converted into executable test flows by the
+      // AI generator.
+      testStories?: string;
+      // Ad-hoc login credentials for this target URL, used when the URL was
+      // detected as login-gated (POST /api/analyze -> requiresLogin) and no
+      // existing Account was picked. Not persisted on the TestRun itself —
+      // either promoted to a real Account (if saveAsAccount) or passed
+      // through to the crawl transiently.
+      username?: string;
+      password?: string;
+      saveAsAccount?: boolean;
+      accountLabel?: string;
     };
     if (!body.targetUrl) return reply.code(400).send({ error: "targetUrl is required" });
+    if (!body.moduleName?.trim()) return reply.code(400).send({ error: "moduleName is required" });
+
+    // Two runs against the same target executing concurrently double up on
+    // Playwright/DB load (each run does several test cases in parallel
+    // already) without any real benefit — that's saturated the pooled DB
+    // connection limit and made unrelated requests crawl in practice. Block
+    // starting a new one until the in-flight run for this target finishes.
+    const activeRun = await prisma.testRun.findFirst({
+      where: { targetUrl: body.targetUrl, status: { in: ["crawling", "generating", "executing", "cancelling"] } },
+      select: { id: true, status: true },
+    });
+    if (activeRun) {
+      return reply.code(409).send({
+        error: `A test run (${activeRun.id}) is already ${activeRun.status} against this target URL. Wait for it to finish before starting another.`,
+      });
+    }
 
     let enabledCategories: TestCategory[] | null = null;
     if (body.enabledCategories !== undefined) {
@@ -81,27 +149,70 @@ export async function testRunRoutes(app: FastifyInstance) {
       if (body.enabledCategories.length) enabledCategories = body.enabledCategories as TestCategory[];
     }
 
+    let accountId = body.accountId || null;
     let projectId = body.projectId || null;
-    if (!projectId && body.accountId) {
-      const account = await prisma.account.findUnique({ where: { id: body.accountId } });
+    if (!projectId && accountId) {
+      const account = await prisma.account.findUnique({ where: { id: accountId } });
       projectId = account?.projectId ?? null;
     }
+
+    if (!accountId && body.saveAsAccount && body.username && body.password) {
+      const saved = await prisma.account.create({
+        data: {
+          label: body.accountLabel?.trim() || `Login for ${new URL(body.targetUrl).hostname}`,
+          targetUrl: body.targetUrl,
+          username: body.username,
+          password: body.password,
+          projectId,
+        },
+      });
+      accountId = saved.id;
+    }
+
+    const createdByUsername = await getCurrentUsername(req);
 
     const run = await prisma.testRun.create({
       data: {
         targetUrl: body.targetUrl,
-        accountId: body.accountId || null,
+        accountId,
         projectId,
         mode: body.mode === "quick" ? "quick" : "full",
         enabledCategoriesJson: enabledCategories ? JSON.stringify(enabledCategories) : null,
+        createdByUsername,
+        moduleName: body.moduleName.trim(),
+        testStories: body.testStories?.trim() || null,
       },
     });
 
     // fire-and-forget; the run progresses asynchronously and the UI polls status
-    runTestRun(run.id, { moduleStories: body.moduleStories }).catch((err) => {
+    const adHocCredentials = accountId ? undefined : { username: body.username, password: body.password };
+    runTestRun(run.id, {
+      testStories: body.testStories,
+      ...adHocCredentials,
+    }).catch((err) => {
       app.log.error(err, `test run ${run.id} failed`);
     });
 
     return reply.code(202).send(run);
+  });
+
+  app.post("/api/test-runs/:id/stop", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const run = await prisma.testRun.findUnique({ where: { id }, select: { status: true } });
+    if (!run) return reply.code(404).send({ error: "not found" });
+
+    const activeStatuses = ["pending", "crawling", "generating", "executing"];
+    if (!activeStatuses.includes(run.status)) {
+      return reply.code(409).send({ error: `Cannot stop a run that is already ${run.status}.` });
+    }
+
+    // Signals the in-process runner to stop pulling new cases/flows; it
+    // finishes whatever's already in flight and transitions the run to
+    // "cancelled" itself once it winds down (see runner.ts). Mark
+    // "cancelling" here immediately so the UI reflects the request right
+    // away instead of waiting for the runner to notice.
+    requestCancellation(id);
+    const updated = await prisma.testRun.update({ where: { id }, data: { status: "cancelling" } });
+    return reply.code(202).send(updated);
   });
 }

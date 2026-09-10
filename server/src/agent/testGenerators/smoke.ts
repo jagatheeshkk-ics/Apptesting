@@ -11,6 +11,7 @@ export function generateSmokeTests(modules: DetectedModule[]): GeneratedTestCase
       description: `Navigate to ${page.url} and verify it returns a successful response with no console errors.`,
       moduleName: page.name,
       expectation: "HTTP 2xx/3xx status, no uncaught console errors, page renders visible content.",
+      testType: "positive",
     });
   }
 
@@ -22,6 +23,7 @@ export function generateSmokeTests(modules: DetectedModule[]): GeneratedTestCase
       description: `Verify all ${form.fields.length} field(s) on the form are present and interactable.`,
       moduleName: form.name,
       expectation: "All detected fields are visible and enabled.",
+      testType: "positive",
     });
   }
 

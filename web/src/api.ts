@@ -83,6 +83,7 @@ export interface TestRun {
   startedAt: string;
   completedAt: string | null;
   reportPath: string | null;
+  moduleName: string | null;
   totalCases: number;
   passedCases: number;
   failedCases: number;
@@ -127,21 +128,25 @@ export type TestCategory =
   | "smoke"
   | "boundary"
   | "vulnerability"
+  | "loginBoundary"
   | "stress"
   | "performance"
   | "compatibility"
   | "accessibility"
-  | "flow";
+  | "flow"
+  | "story";
 
 export const TEST_CATEGORY_LABELS: Record<TestCategory, string> = {
   smoke: "Smoke",
   boundary: "Boundary value",
   vulnerability: "Vulnerability (security)",
+  loginBoundary: "Login boundary (BVA)",
   stress: "Stress / load",
   performance: "Performance",
   compatibility: "Compatibility (viewport)",
   accessibility: "Accessibility",
   flow: "Flows (integration/UAT)",
+  story: "Custom test stories",
 };
 
 export const ALL_TEST_CATEGORIES = Object.keys(TEST_CATEGORY_LABELS) as TestCategory[];
@@ -158,12 +163,14 @@ export interface DetectedField {
   options?: string[];
 }
 
+// A crawled page/form, used only to drive field-based test generation and
+// login detection — not something the tester names or attaches stories to
+// directly (see the New Test Run page's Module Name + Test stories fields).
 export interface AnalyzedModule {
   name: string;
   url: string;
   type: "page" | "form" | "nav";
   fields: DetectedField[];
-  userStories: string[];
 }
 
 export interface RunModule {
@@ -174,12 +181,16 @@ export interface RunModule {
   userStories: string[];
 }
 
+export type TestType = "positive" | "negative";
+
 export interface TestCase {
   id: string;
   category: TestCategory;
   name: string;
   description: string;
   inputJson: string | null;
+  expectation: string | null;
+  testType: TestType;
   result: TestResult | null;
   stressMetric?: StressMetric | null;
   performanceMetric?: PerformanceMetric | null;
@@ -204,6 +215,7 @@ export interface TestRunDetail extends TestRun {
   regressions: RegressionSummary | null;
   modules: RunModule[];
   enabledCategories: TestCategory[] | null;
+  narrativeSummary: string;
 }
 
 export interface AccountKpi {
@@ -343,6 +355,8 @@ export interface TestCaseReportRow {
   id: string;
   category: TestCategory;
   name: string;
+  expectation: string | null;
+  testType: TestType;
   module: { name: string } | null;
   result: {
     status: "pass" | "fail" | "error";
@@ -407,24 +421,44 @@ export const api = {
   getTestRun: (id: string) => fetch(`${BASE}/test-runs/${id}`).then((r) => json<TestRunDetail>(r)),
   createTestRun: (data: {
     targetUrl: string;
+    moduleName: string;
     accountId?: string;
     projectId?: string;
     mode?: "full" | "quick";
     enabledCategories?: TestCategory[];
-    moduleStories?: Record<string, string[]>;
+    testStories?: string;
+    username?: string;
+    password?: string;
+    saveAsAccount?: boolean;
+    accountLabel?: string;
   }) =>
     fetch(`${BASE}/test-runs`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     }).then((r) => json<TestRun>(r)),
+  stopTestRun: (id: string) => fetch(`${BASE}/test-runs/${id}/stop`, { method: "POST" }).then((r) => json<TestRun>(r)),
 
-  analyzeUrl: (data: { targetUrl: string; accountId?: string }) =>
+  analyzeUrl: (data: { targetUrl: string; accountId?: string; username?: string; password?: string }) =>
     fetch(`${BASE}/analyze`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
-    }).then((r) => json<{ modules: AnalyzedModule[] }>(r)),
+    }).then((r) =>
+      json<{
+        modules: AnalyzedModule[];
+        requiresLogin: boolean;
+        previousModuleNames: string[];
+        loggedIn: boolean | null;
+      }>(r),
+    ),
+
+  moduleHistory: (data: { targetUrl: string; moduleName: string }) =>
+    fetch(`${BASE}/analyze/module-history`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    }).then((r) => json<{ previousTestStories: string | null }>(r)),
 
   accountKpis: () => fetch(`${BASE}/kpi/accounts`).then((r) => json<AccountKpi[]>(r)),
   agentKpi: () => fetch(`${BASE}/kpi/agent`).then((r) => json<AgentPerformanceKpi>(r)),
@@ -509,6 +543,9 @@ export const api = {
   searchTestCaseReport: (params: ReportSearchParams) =>
     fetch(`${BASE}/reports/test-cases?${reportQueryString(params)}`).then((r) => json<TestCaseReportSummary>(r)),
   reportExportUrl: (params: ReportSearchParams) => `${BASE}/reports/test-cases/export?${reportQueryString(params)}`,
+  reportExportXlsxUrl: (params: ReportSearchParams) =>
+    `${BASE}/reports/test-cases/export.xlsx?${reportQueryString(params)}`,
+  testRunReportXlsxUrl: (testRunId: string) => `${BASE}/test-runs/${testRunId}/report.xlsx`,
 
   authStatus: () => fetch(`${BASE}/auth/status`).then((r) => json<{ enabled: boolean }>(r)),
   me: () => fetch(`${BASE}/auth/me`, { credentials: "include" }),

@@ -41,6 +41,11 @@ export default function Reports() {
     dateTo: dateTo || undefined,
     modules: selectedModules,
   });
+  const exportXlsxUrl = api.reportExportXlsxUrl({
+    dateFrom: dateFrom || undefined,
+    dateTo: dateTo || undefined,
+    modules: selectedModules,
+  });
 
   return (
     <div>
@@ -98,9 +103,14 @@ export default function Reports() {
             {loading ? "Searching…" : "Generate report"}
           </button>
           {summary && (
-            <a className="link" href={exportUrl} style={{ marginLeft: 12 }}>
-              Download as HTML
-            </a>
+            <>
+              <a className="link" href={exportUrl} style={{ marginLeft: 12 }}>
+                Download as HTML
+              </a>
+              <a className="link" href={exportXlsxUrl} style={{ marginLeft: 12 }}>
+                Download as Excel
+              </a>
+            </>
           )}
         </form>
       </div>
@@ -133,9 +143,12 @@ export default function Reports() {
                 <th>Project</th>
                 <th>Module</th>
                 <th>Category</th>
+                <th>Type</th>
                 <th>Test case</th>
                 <th>Status</th>
                 <th>Severity</th>
+                <th>Expected result</th>
+                <th>Actual result</th>
                 <th>Executed at</th>
               </tr>
             </thead>
@@ -146,17 +159,22 @@ export default function Reports() {
                   <td>{tc.testRun.project?.name ?? "—"}</td>
                   <td>{tc.module?.name ?? "—"}</td>
                   <td>{tc.category}</td>
+                  <td>
+                    <span className={`badge ${tc.testType}`}>{tc.testType}</span>
+                  </td>
                   <td>{tc.name}</td>
                   <td>
                     <span className={`badge ${tc.result?.status ?? ""}`}>{tc.result?.status ?? "—"}</span>
                   </td>
                   <td>{tc.result?.severity ?? "—"}</td>
+                  <td>{tc.expectation ?? "—"}</td>
+                  <td>{tc.result?.actual ?? "—"}</td>
                   <td>{tc.result ? new Date(tc.result.createdAt).toLocaleString() : "—"}</td>
                 </tr>
               ))}
               {!summary.testCases.length && (
                 <tr>
-                  <td colSpan={8}>No test case results match this filter.</td>
+                  <td colSpan={11}>No test case results match this filter.</td>
                 </tr>
               )}
             </tbody>

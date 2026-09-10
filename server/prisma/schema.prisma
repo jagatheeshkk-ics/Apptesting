@@ -116,13 +116,16 @@ model TestRun {
   projectId   String?
   project     Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
   mode        String    @default("full") // full | quick (only re-run cases that failed last time, plus smoke)
-  status      String    @default("pending") // pending | crawling | generating | executing | completed | failed
+  status      String    @default("pending") // pending | crawling | generating | executing | cancelling | cancelled | completed | failed
   error       String?
   startedAt   DateTime  @default(now())
   completedAt DateTime?
   reportPath  String?
   regressionsJson String? // JSON-encoded diff vs the previous run for this target (regressed/fixed case names)
   enabledCategoriesJson String? // JSON-encoded array of TestCategory keys the user selected via checkboxes; null = all categories
+  createdByUsername String? // snapshot of the platform user's display name/username who started this run (AUTH_ENABLED sessions only)
+  moduleName  String?   // tester-entered business module name for this run (e.g. "Payroll"), required at the API level; identifies the module independent of whatever titles the crawler finds on the page
+  testStories String? // freeform custom test stories typed on the New Test Run page for this module, persisted so a later run of the same module can offer to reuse them
 
   // rollup counters, updated as the run progresses
   totalCases  Int @default(0)
@@ -135,7 +138,10 @@ model TestRun {
   usageEvents UsageEvent[]
 }
 
-// A discovered page/form/element cluster on the target application.
+// A discovered page/form/element cluster on the target application, found by
+// the crawler purely to drive field-based test generation (smoke, boundary,
+// vulnerability, etc.) — not a unit the tester names or attaches stories to
+// directly (see TestRun.moduleName/testStories for that).
 model Module {
   id         String  @id @default(cuid())
   testRunId  String
@@ -144,7 +150,7 @@ model Module {
   url        String
   type       String // page | form | nav
   fieldsJson String // JSON-encoded array of detected input fields (name, type, attrs)
-  userStoriesJson String? // JSON-encoded array of editable user-story strings, auto-generated then user-editable
+  userStoriesJson String? // legacy: JSON-encoded per-page user stories from before TestRun.moduleName/testStories existed; unused going forward, kept for old runs' history
 
   testCases TestCase[]
 }
@@ -157,10 +163,12 @@ model TestCase {
   module      Module? @relation(fields: [moduleId], references: [id])
   testFlowId  String?
   testFlow    TestFlow? @relation(fields: [testFlowId], references: [id])
-  category    String // smoke | boundary | vulnerability | stress | performance | compatibility | accessibility | flow
+  category    String // smoke | boundary | vulnerability | loginBoundary | stress | performance | compatibility | accessibility | flow | story
   name        String
   description String
   inputJson   String? // JSON-encoded input(s) used for this case
+  expectation String? // expected result this case checks for, shown alongside the actual/observed result
+  testType    String  @default("positive") // positive (valid/expected input or normal usage) | negative (invalid/malicious input, expected to be rejected)
 
   result            TestResult?
   stressMetric      StressMetric?

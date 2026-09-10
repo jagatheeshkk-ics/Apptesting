@@ -3,17 +3,42 @@
 An AI-agent-driven application testing platform. Give it a URL (and, optionally,
 a login account), and the agent will:
 
-1. **Analyze the URL** — as soon as you enter one and move on, the agent
-   crawls the application, identifies its modules (pages, forms, fields), and
-   drafts a starting set of plain-language user stories for each module —
-   shown right under the URL field for you to edit, remove, or add to before
-   starting the run. Story drafting uses the free Gemini API when
-   `GEMINI_API_KEY` is set, falling back to simple templates otherwise (still fully editable
-   either way). Stories are documentation/traceability attached to each
-   module (shown on the run's detail page too) — they don't get parsed for
-   test steps. What actually drives test generation is the crawled
-   fields/forms/buttons for each module, filtered down to whichever
-   test-type checkboxes you selected.
+1. **Analyze the URL, then name the module and describe what to test** — as
+   soon as you enter a URL and move on, the agent crawls the application
+   (purely to discover pages/forms/fields for the automated test types
+   below, and to detect a login wall) and then asks for two things, both
+   required:
+   - **Module name** — the business module this URL belongs to (e.g.
+     "Payroll", "CPF", "Attendance"), independent of whatever `<title>`s the
+     crawler finds on the page. Typing in this field suggests names you've
+     used before for this same URL, so repeat testing reuses the exact same
+     name instead of fragmenting history with near-duplicates like "payroll"
+     vs "Pay Roll".
+   - **Test stories** — freeform text describing every scenario that needs
+     testing at this URL/module (e.g. "Submitting a payroll amount for a
+     valid employee ID should succeed and show a confirmation."). Leaving
+     the module name field looks up the most recent test stories saved for
+     that exact (URL, module name) pair and auto-fills them — an exact match
+     on a name you chose, not a heuristic, so it's safe to do automatically
+     with no opt-in toggle.
+   - The AI (requires `GEMINI_API_KEY`) converts the test stories into
+     executable browser flows — navigating, filling fields, clicking, and
+     verifying the described outcome — with the same per-step pass/fail and
+     screenshots as saved test flows. If a scenario turns out to reference a
+     specific real value the AI can't invent (e.g. an actual employee ID or
+     order number) that wasn't given in the stories text, the run records one
+     clear error case naming exactly what's missing, rather than guessing —
+     there's no separate pre-check step; add the detail to the stories text
+     and re-run. Without `GEMINI_API_KEY` configured at all, the run instead
+     records one clear error case explaining that the stories couldn't be
+     processed, rather than silently skipping them.
+   - If the URL turns out to be gated behind a login (a login form is found
+     and no credentials were given), the page detects this and asks for that
+     URL's credentials right there — "Re-analyze with these credentials"
+     then crawls past the login page to discover the authenticated
+     pages/forms too, instead of silently testing only the login page.
+     Those credentials can be used for just that one run, or saved as a
+     reusable login Account.
 2. **Generate and execute test cases** across the testing pyramid — which
    categories run is your choice, via checkboxes (default: all of them):
    - **Smoke** — pages load, forms render with all expected fields.
@@ -22,6 +47,15 @@ a login account), and the agent will:
    - **Vulnerability (security)** — reflected XSS, SQL injection, path
      traversal, template injection, missing security headers (non-destructive
      payloads only, for applications you own or are authorized to test).
+   - **Login boundary (BVA)** — business-rule checks specific to a
+     username/password login screen (single-step or the "username → Proceed
+     → password appears" two-step pattern): empty/whitespace/SQLi/XSS/unicode
+     in the username, an asymmetric trim rule (a padded valid username should
+     be trimmed and accepted; a padded password should be rejected, not
+     trimmed), case-insensitive username matching, password masking, and
+     empty/whitespace password rejection. Only generated when login
+     credentials were provided for the run, since several of these checks
+     require actually completing a real login to verify.
    - **Load & stress** — N concurrent requests against each page and form
      submission, measuring error rate and latency percentiles.
    - **Performance** — navigation timing (DOMContentLoaded/load) and page
@@ -41,23 +75,47 @@ a login account), and the agent will:
      named multi-step journey (e.g. login → add to cart → checkout → expect
      confirmation) once; it then runs automatically as part of any test run
      against a matching target URL, with per-step pass/fail and screenshots.
+   - **Custom test stories** — the required "Test stories" text described in
+     step 1 above, converted into executable browser flows.
 
    *Not included:* unit testing doesn't fit this architecture — the platform
    only ever sees a target URL from the outside, so there's no source/function
    boundary to unit-test.
 3. **Execute every case** with a real browser (Playwright) or, for stress
    tests, concurrent HTTP requests — capturing a screenshot and
-   timing/observed-behavior evidence for each one.
-4. **Produce a detailed HTML test report** per run, with embedded screenshots
-   and a regression summary.
+   timing/observed-behavior evidence for each one. A run in progress can be
+   **stopped** from its detail page: it finishes whatever case is already
+   executing, records everything gathered so far, and ends the run as
+   `cancelled` instead of running the rest of the queue. Starting a second
+   run against a target that already has one crawling/generating/executing
+   is blocked until the first one finishes or is stopped.
+4. **Produce a detailed HTML test report** per run — opening with a plain-English
+   narrative summary (what was tested, pass/fail counts, which areas had
+   issues, any high/critical security findings, and what changed vs. the
+   previous run), shown the same way on the run detail page and in the
+   Excel export's Summary sheet — with embedded screenshots
+   and a regression summary. Every test case shows its **type** (positive —
+   valid input/normal usage, or negative — invalid/malicious input expected
+   to be rejected), its **expected result**, and its **actual result** side
+   by side, on the run detail page, the downloadable report, and the
+   Reports page's cross-run search. The report header also names the
+   **module(s)** covered, **who ran it** (the signed-in platform user, when
+   auth is enabled), and the **test types actually selected** ("Full" only
+   if every category was included, otherwise the specific types picked).
+   Boundary tests also detect redirect-loop pages (URL changes but the
+   destination reads identically to the starting page — e.g. a maintenance
+   or expired-session bounce) and flag those as an error needing manual
+   review instead of a misleading pass/fail. Both the per-run report and
+   the Reports page are also **downloadable as an Excel workbook**, not
+   just HTML.
 5. **Track KPIs** across multiple login accounts: test execution KPIs (pass
    rate, vulnerabilities/accessibility/performance issues found), application
    usage/behavior KPIs (response times, errors, latency under load), and
    agent performance KPIs (run duration, flow pass rate, findings over time).
    The **KPI dashboard**'s Overview panel gives a filterable summary: total
    test runs/cases, pass rate, and total issues found, broken down by test
-   type (smoke/boundary/vulnerability/stress/performance/compatibility/
-   accessibility/flow) and by day or week — filterable by Project, by
+   type (smoke/boundary/vulnerability/loginBoundary/stress/performance/
+   compatibility/accessibility/flow) and by day or week — filterable by Project, by
    Account (the "user" whose login was used for the run), and by date range.
 6. **Search test case results for a report** — filter across every run's test
    cases by date range and by module (pick one module or several), on the
@@ -174,17 +232,36 @@ those dropdowns for users permitted on the page using the dropdown but
 not on the page that owns that data. Mutations on those same resources
 (create/edit/delete) stay gated as normal.
 
-### AI-generated user stories
+### AI-generated user stories and custom test stories
 
 Set `GEMINI_API_KEY` (a free API key from [Google AI Studio](https://aistudio.google.com/apikey))
 to have the New Test Run page's user-story drafts written by Gemini
-(`gemini-2.5-flash`) instead of the built-in templates. Without a
-key, story drafting still works — it just uses the simpler templates in
-`server/src/agent/userStoryGenerator.ts`. Either way, stories are fully
-editable before you start a run, and the AI call has a 15s timeout with no
-retries and falls straight back to the templates on any error (bad key,
-rate limit, network issue, malformed response), so a flaky or missing key
-never blocks analyzing a URL or starting a run.
+instead of the built-in templates, and to enable the **custom test
+stories** textarea (free-text QA scenarios converted into executable
+flows — see point 2 above). Without a key, story drafting still works —
+it just uses the simpler templates in `server/src/agent/userStoryGenerator.ts`
+— and custom test stories record a single clear error case explaining
+that the AI isn't configured, instead of silently doing nothing.
+
+The model ID is centralized in `server/src/agent/geminiModel.ts` and
+defaults to `gemini-flash-latest`; override it with the `GEMINI_MODEL` env
+var if Google deprecates/renames it again (server logs will show a
+`... is no longer available` error naming the exact problem — no code
+change needed, just set the env var and redeploy). Either way, user
+stories are fully editable before you start a run, and every AI call has a
+timeout and falls back cleanly on any error (bad key, network issue,
+malformed response, deprecated model) — all now logged via
+`console.error` so failures are diagnosable in Render's logs instead of
+failing silently.
+
+Google's free tier caps requests at a handful per minute, so per-module
+story generation (both the New Test Run page's auto-analyze preview and
+the actual run) dispatches its Gemini calls one at a time rather than all
+at once, and a `429` (rate limited) gets one retry after honoring Google's
+suggested wait — both meant to keep a target with many pages/forms from
+blowing through the quota in one burst. Persistent `429`s past that point
+still fall back cleanly (heuristic templates for user stories; a single
+clear error case for custom test stories) rather than failing the run.
 
 ## Database (Supabase)
 
@@ -230,6 +307,17 @@ If Playwright's bundled Chromium isn't installed in your environment, either
 run `npx playwright install chromium` inside `server/`, or point
 `CHROMIUM_EXECUTABLE_PATH` in `server/.env` at an existing Chromium/Chrome
 binary.
+
+### Run speed
+
+Test cases (and flows) within a run execute concurrently — by default 4 at a
+time, each in its own browser tab sharing the crawl's logged-in session —
+instead of one at a time. Set `TEST_EXECUTION_CONCURRENCY` in `server/.env`
+to change this: lower it (e.g. `1`) on a memory-constrained host or if the
+target app doesn't tolerate concurrent requests well (some apps enforce a
+single active session, or invalidate CSRF tokens on each page load, which
+can turn concurrent execution into false failures); raise it if the host has
+room and you want runs to finish faster.
 
 ## Deploying to production (Render)
 

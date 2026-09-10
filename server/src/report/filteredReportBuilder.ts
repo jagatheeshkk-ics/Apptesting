@@ -1,4 +1,4 @@
-import { escapeHtml, statusBadge } from "./htmlHelpers.js";
+import { escapeHtml, statusBadge, testTypeBadge } from "./htmlHelpers.js";
 import { TestCaseReportFilters, TestCaseReportRow } from "../routes/reports.js";
 
 export function buildFilteredHtmlReport(testCases: TestCaseReportRow[], filters: TestCaseReportFilters): string {
@@ -21,9 +21,11 @@ export function buildFilteredHtmlReport(testCases: TestCaseReportRow[], filters:
         <td>${tc.testRun.project ? escapeHtml(tc.testRun.project.name) : "—"}</td>
         <td>${tc.module ? escapeHtml(tc.module.name) : "—"}</td>
         <td>${escapeHtml(tc.category)}</td>
+        <td>${testTypeBadge(tc.testType)}</td>
         <td>${escapeHtml(tc.name)}</td>
         <td>${r ? statusBadge(r.status) : "—"}</td>
         <td>${r?.severity ? escapeHtml(r.severity) : "—"}</td>
+        <td>${escapeHtml(tc.expectation ?? "—")}</td>
         <td>${escapeHtml(r?.actual ?? "")}</td>
         <td>${r ? new Date(r.createdAt).toISOString() : "—"}</td>
       </tr>`;
@@ -64,7 +66,7 @@ export function buildFilteredHtmlReport(testCases: TestCaseReportRow[], filters:
 
   <table>
     <thead>
-      <tr><th>Target</th><th>Project</th><th>Module</th><th>Category</th><th>Test case</th><th>Status</th><th>Severity</th><th>Observed behavior</th><th>Executed at</th></tr>
+      <tr><th>Target</th><th>Project</th><th>Module</th><th>Category</th><th>Type</th><th>Test case</th><th>Status</th><th>Severity</th><th>Expected result</th><th>Actual result</th><th>Executed at</th></tr>
     </thead>
     <tbody>${rows}</tbody>
   </table>

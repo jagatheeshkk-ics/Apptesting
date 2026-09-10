@@ -1,20 +1,94 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { TestRunDetail as TestRunDetailType, api } from "../api.js";
+import { TestCase, TestRunDetail as TestRunDetailType, api } from "../api.js";
 
 const CATEGORY_LABEL: Record<string, string> = {
   smoke: "Smoke tests",
   boundary: "Boundary value tests",
   vulnerability: "Vulnerability tests",
+  loginBoundary: "Login boundary tests (BVA)",
   compatibility: "Compatibility tests",
   accessibility: "Accessibility tests",
 };
 
-const GENERIC_CATEGORIES = ["smoke", "boundary", "vulnerability", "compatibility", "accessibility"] as const;
+const GENERIC_CATEGORIES = ["smoke", "boundary", "vulnerability", "loginBoundary", "compatibility", "accessibility"] as const;
+
+// Statuses during which the Stop control is shown at all — once the run
+// reaches any other status it's already finished. "cancelling" is included
+// so the button stays visible (disabled) while a stop request is winding
+// down, rather than disappearing until the run fully stops.
+const STOPPABLE_STATUSES = ["pending", "crawling", "generating", "executing", "cancelling"];
+
+// Shared by both saved Flows and AI-generated custom test stories — both
+// are a named sequence of steps with an overall expected/actual outcome.
+function FlowLikeSection({ title, cases }: { title: string; cases: TestCase[] }) {
+  if (!cases.length) return null;
+  return (
+    <div className="card">
+      <h3>
+        {title} ({cases.length})
+      </h3>
+      {cases.map((tc) => (
+        <div key={tc.id} style={{ marginBottom: 20 }}>
+          <p>
+            <strong>{tc.name}</strong>{" "}
+            {tc.result ? <span className={`badge ${tc.result.status}`}>{tc.result.status}</span> : null}
+          </p>
+          <p style={{ color: "#59636e", fontSize: 13 }}>
+            <strong>Expected:</strong> {tc.expectation ?? "—"}
+          </p>
+          <p style={{ color: "#59636e", fontSize: 13 }}>
+            <strong>Actual:</strong> {tc.result?.actual}
+          </p>
+          {tc.flowStepResults?.length ? (
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Action</th>
+                  <th>Status</th>
+                  <th>Detail</th>
+                  <th>Screenshot</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tc.flowStepResults.map((s) => (
+                  <tr key={s.order}>
+                    <td>{s.order + 1}</td>
+                    <td>{s.action}</td>
+                    <td>
+                      <span className={`badge ${s.status}`}>{s.status}</span>
+                    </td>
+                    <td>{s.detail}</td>
+                    <td>
+                      {s.screenshotPath ? (
+                        <a href={`/screenshots/${s.screenshotPath}`} target="_blank" rel="noreferrer">
+                          <img
+                            src={`/screenshots/${s.screenshotPath}`}
+                            alt="screenshot"
+                            style={{ maxWidth: 100, border: "1px solid #ddd", borderRadius: 4 }}
+                          />
+                        </a>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : null}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default function TestRunDetail() {
   const { id } = useParams();
   const [run, setRun] = useState<TestRunDetailType | null>(null);
+  const [stopping, setStopping] = useState(false);
+  const [stopError, setStopError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -24,17 +98,33 @@ export default function TestRunDetail() {
     return () => clearInterval(t);
   }, [id]);
 
+  async function handleStop() {
+    if (!id) return;
+    setStopping(true);
+    setStopError(null);
+    try {
+      const updated = await api.stopTestRun(id);
+      setRun((prev) => (prev ? { ...prev, status: updated.status } : prev));
+    } catch (err) {
+      setStopError(err instanceof Error ? err.message : "Failed to stop the run.");
+    } finally {
+      setStopping(false);
+    }
+  }
+
   if (!run) return <p>Loading…</p>;
 
   const byCategory: Record<string, typeof run.testCases> = {
     smoke: [],
     boundary: [],
     vulnerability: [],
+    loginBoundary: [],
     stress: [],
     performance: [],
     compatibility: [],
     accessibility: [],
     flow: [],
+    story: [],
   };
   for (const tc of run.testCases) byCategory[tc.category]?.push(tc);
 
@@ -42,11 +132,26 @@ export default function TestRunDetail() {
 
   return (
     <div>
-      <h2>Test run: {run.targetUrl}</h2>
+      <h2 style={{ wordBreak: "break-all" }}>Test run: {run.targetUrl}</h2>
       <div className="card">
+        {run.moduleName && (
+          <p>
+            Module: <strong>{run.moduleName}</strong>
+          </p>
+        )}
         <p>
           Status: <span className={`badge ${run.status}`}>{run.status}</span> &nbsp; Mode: <strong>{run.mode}</strong>
+          {STOPPABLE_STATUSES.includes(run.status) && (
+            <>
+              {" "}
+              &nbsp;
+              <button type="button" onClick={handleStop} disabled={stopping || run.status === "cancelling"}>
+                {stopping || run.status === "cancelling" ? "Stopping…" : "Stop test run"}
+              </button>
+            </>
+          )}
         </p>
+        {stopError && <p style={{ color: "#cf222e" }}>{stopError}</p>}
         <p>
           {run.passedCases} passed / {run.failedCases} failed / {run.errorCases} errors (of {run.totalCases} total)
         </p>
@@ -54,21 +159,33 @@ export default function TestRunDetail() {
           <p>
             <a className="link" href={`/reports/${run.reportPath}`} target="_blank" rel="noreferrer">
               Open full HTML report ↗
+            </a>{" "}
+            &nbsp;
+            <a className="link" href={api.testRunReportXlsxUrl(run.id)}>
+              Download as Excel
             </a>
           </p>
         )}
         {run.error && <p style={{ color: "#cf222e" }}>Error: {run.error}</p>}
       </div>
 
+      {run.narrativeSummary && (
+        <div className="card">
+          <h3>Summary</h3>
+          <p style={{ fontSize: 15, lineHeight: 1.6 }}>{run.narrativeSummary}</p>
+        </div>
+      )}
+
       {!!run.modules?.length && (
         <div className="card">
-          <h3>Modules &amp; user stories</h3>
+          <h3>Pages/forms discovered</h3>
           {run.modules.map((m) => (
             <div key={m.id} style={{ marginBottom: 14 }}>
               <strong>
                 {m.name} <span style={{ fontWeight: 400, color: "#59636e" }}>({m.type})</span>
               </strong>
-              {m.userStories.length ? (
+              {/* userStories is legacy, from before per-run Module Name + Test stories existed — only ever non-empty on old runs */}
+              {!!m.userStories.length && (
                 <ul style={{ margin: "4px 0 0", paddingLeft: 20 }}>
                   {m.userStories.map((s, i) => (
                     <li key={i} style={{ fontSize: 13 }}>
@@ -76,8 +193,6 @@ export default function TestRunDetail() {
                     </li>
                   ))}
                 </ul>
-              ) : (
-                <p style={{ margin: "4px 0 0", color: "#59636e", fontSize: 13 }}>No user stories recorded.</p>
               )}
             </div>
           ))}
@@ -124,8 +239,10 @@ export default function TestRunDetail() {
               <thead>
                 <tr>
                   <th>Case</th>
+                  <th>Type</th>
                   <th>Status</th>
-                  <th>Observed</th>
+                  <th>Expected result</th>
+                  <th>Actual result</th>
                   <th>Screenshot</th>
                 </tr>
               </thead>
@@ -133,7 +250,11 @@ export default function TestRunDetail() {
                 {byCategory[cat].map((tc) => (
                   <tr key={tc.id}>
                     <td>{tc.name}</td>
+                    <td>
+                      <span className={`badge ${tc.testType}`}>{tc.testType}</span>
+                    </td>
                     <td>{tc.result ? <span className={`badge ${tc.result.status}`}>{tc.result.status}</span> : "—"}</td>
+                    <td>{tc.expectation ?? "—"}</td>
                     <td>{tc.result?.actual ?? "—"}</td>
                     <td>
                       {tc.result?.screenshotPath ? (
@@ -164,6 +285,7 @@ export default function TestRunDetail() {
               <tr>
                 <th>Case</th>
                 <th>Status</th>
+                <th>Expected result</th>
                 <th>Concurrency</th>
                 <th>Requests</th>
                 <th>Error rate</th>
@@ -176,6 +298,7 @@ export default function TestRunDetail() {
                 <tr key={tc.id}>
                   <td>{tc.name}</td>
                   <td>{tc.result ? <span className={`badge ${tc.result.status}`}>{tc.result.status}</span> : "—"}</td>
+                  <td>{tc.expectation ?? "—"}</td>
                   <td>{tc.stressMetric?.concurrency ?? "—"}</td>
                   <td>{tc.stressMetric?.totalRequests ?? "—"}</td>
                   <td>
@@ -198,6 +321,7 @@ export default function TestRunDetail() {
               <tr>
                 <th>Case</th>
                 <th>Status</th>
+                <th>Expected result</th>
                 <th>DOMContentLoaded</th>
                 <th>Load event</th>
                 <th>Resources</th>
@@ -209,6 +333,7 @@ export default function TestRunDetail() {
                 <tr key={tc.id}>
                   <td>{tc.name}</td>
                   <td>{tc.result ? <span className={`badge ${tc.result.status}`}>{tc.result.status}</span> : "—"}</td>
+                  <td>{tc.expectation ?? "—"}</td>
                   <td>{tc.performanceMetric ? `${tc.performanceMetric.domContentLoadedMs}ms` : "—"}</td>
                   <td>{tc.performanceMetric ? `${tc.performanceMetric.loadEventMs}ms` : "—"}</td>
                   <td>{tc.performanceMetric?.resourceCount ?? "—"}</td>
@@ -220,58 +345,8 @@ export default function TestRunDetail() {
         </div>
       ) : null}
 
-      {byCategory.flow.length ? (
-        <div className="card">
-          <h3>Flow tests ({byCategory.flow.length})</h3>
-          {byCategory.flow.map((tc) => (
-            <div key={tc.id} style={{ marginBottom: 20 }}>
-              <p>
-                <strong>{tc.name}</strong>{" "}
-                {tc.result ? <span className={`badge ${tc.result.status}`}>{tc.result.status}</span> : null}
-              </p>
-              <p style={{ color: "#59636e", fontSize: 13 }}>{tc.result?.actual}</p>
-              {tc.flowStepResults?.length ? (
-                <table>
-                  <thead>
-                    <tr>
-                      <th>#</th>
-                      <th>Action</th>
-                      <th>Status</th>
-                      <th>Detail</th>
-                      <th>Screenshot</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {tc.flowStepResults.map((s) => (
-                      <tr key={s.order}>
-                        <td>{s.order + 1}</td>
-                        <td>{s.action}</td>
-                        <td>
-                          <span className={`badge ${s.status}`}>{s.status}</span>
-                        </td>
-                        <td>{s.detail}</td>
-                        <td>
-                          {s.screenshotPath ? (
-                            <a href={`/screenshots/${s.screenshotPath}`} target="_blank" rel="noreferrer">
-                              <img
-                                src={`/screenshots/${s.screenshotPath}`}
-                                alt="screenshot"
-                                style={{ maxWidth: 100, border: "1px solid #ddd", borderRadius: 4 }}
-                              />
-                            </a>
-                          ) : (
-                            "—"
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              ) : null}
-            </div>
-          ))}
-        </div>
-      ) : null}
+      <FlowLikeSection title="Flow tests" cases={byCategory.flow} />
+      <FlowLikeSection title="Custom test stories" cases={byCategory.story} />
     </div>
   );
 }

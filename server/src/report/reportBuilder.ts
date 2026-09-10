@@ -2,13 +2,24 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { prisma } from "../db.js";
 import { RegressionSummary } from "../analysis/regression.js";
-import { escapeHtml, statusBadge } from "./htmlHelpers.js";
+import { escapeHtml, statusBadge, testTypeBadge } from "./htmlHelpers.js";
+import { buildNarrativeSummary } from "./narrativeSummary.js";
+import { ALL_TEST_CATEGORIES, TEST_CATEGORY_LABELS, TestCategory } from "../types.js";
+
+// "Full" when every category was selected (or no filter was applied at
+// all); otherwise the specific test types the user picked, so the report
+// doesn't just say "full" when it was actually a filtered run.
+export function testTypesLabel(enabledCategoriesJson: string | null): string {
+  const enabled = enabledCategoriesJson ? (JSON.parse(enabledCategoriesJson) as TestCategory[]) : null;
+  if (!enabled || enabled.length >= ALL_TEST_CATEGORIES.length) return "Full";
+  return enabled.map((c) => TEST_CATEGORY_LABELS[c] ?? c).join(", ");
+}
 
 export async function buildHtmlReport(testRunId: string, reportDir: string, screenshotDir: string): Promise<string> {
   const run = await prisma.testRun.findUniqueOrThrow({
     where: { id: testRunId },
     include: {
-      account: true,
+      modules: true,
       testCases: {
         include: {
           result: true,
@@ -26,11 +37,13 @@ export async function buildHtmlReport(testRunId: string, reportDir: string, scre
     smoke: [],
     boundary: [],
     vulnerability: [],
+    loginBoundary: [],
     stress: [],
     performance: [],
     compatibility: [],
     accessibility: [],
     flow: [],
+    story: [],
   };
   for (const tc of run.testCases) byCategory[tc.category]?.push(tc);
 
@@ -38,6 +51,20 @@ export async function buildHtmlReport(testRunId: string, reportDir: string, scre
   const stressFindings = byCategory.stress.filter((tc) => tc.result?.status === "fail");
 
   const regressions: RegressionSummary | null = run.regressionsJson ? JSON.parse(run.regressionsJson) : null;
+
+  const narrativeSummary = buildNarrativeSummary(
+    {
+      targetUrl: run.targetUrl,
+      moduleName: run.moduleName,
+      mode: run.mode,
+      totalCases: run.totalCases,
+      passedCases: run.passedCases,
+      failedCases: run.failedCases,
+      errorCases: run.errorCases,
+    },
+    run.testCases.map((tc) => ({ category: tc.category, name: tc.name, result: tc.result ? { status: tc.result.status, severity: tc.result.severity } : null })),
+    regressions,
+  );
 
   const sectionHtml = (title: string, cases: typeof run.testCases) => {
     if (!cases.length) return "";
@@ -49,8 +76,10 @@ export async function buildHtmlReport(testRunId: string, reportDir: string, scre
           : "—";
         return `<tr>
           <td>${escapeHtml(tc.name)}</td>
+          <td>${testTypeBadge(tc.testType)}</td>
           <td>${r ? statusBadge(r.status) : "—"}</td>
           <td>${r?.severity ? escapeHtml(r.severity) : "—"}</td>
+          <td>${escapeHtml(tc.expectation ?? "—")}</td>
           <td>${escapeHtml(r?.actual ?? "")}</td>
           <td>${r ? `${r.durationMs}ms` : "—"}</td>
           <td>${screenshotTag}</td>
@@ -60,7 +89,7 @@ export async function buildHtmlReport(testRunId: string, reportDir: string, scre
     return `
       <h2>${title} (${cases.length})</h2>
       <table>
-        <thead><tr><th>Test case</th><th>Status</th><th>Severity</th><th>Observed behavior</th><th>Duration</th><th>Screenshot</th></tr></thead>
+        <thead><tr><th>Test case</th><th>Type</th><th>Status</th><th>Severity</th><th>Expected result</th><th>Actual result</th><th>Duration</th><th>Screenshot</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>`;
   };
@@ -74,6 +103,7 @@ export async function buildHtmlReport(testRunId: string, reportDir: string, scre
         return `<tr>
           <td>${escapeHtml(tc.name)}</td>
           <td>${r ? statusBadge(r.status) : "—"}</td>
+          <td>${escapeHtml(tc.expectation ?? "—")}</td>
           <td>${m?.concurrency ?? "—"}</td>
           <td>${m?.totalRequests ?? "—"}</td>
           <td>${m ? `${m.errorRatePct}% (${m.errorCount})` : "—"}</td>
@@ -85,7 +115,7 @@ export async function buildHtmlReport(testRunId: string, reportDir: string, scre
     return `
       <h2>Stress tests (${cases.length})</h2>
       <table>
-        <thead><tr><th>Test case</th><th>Status</th><th>Concurrency</th><th>Requests</th><th>Error rate</th><th>Avg latency</th><th>P95 latency</th></tr></thead>
+        <thead><tr><th>Test case</th><th>Status</th><th>Expected result</th><th>Concurrency</th><th>Requests</th><th>Error rate</th><th>Avg latency</th><th>P95 latency</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>`;
   };
@@ -99,6 +129,7 @@ export async function buildHtmlReport(testRunId: string, reportDir: string, scre
         return `<tr>
           <td>${escapeHtml(tc.name)}</td>
           <td>${r ? statusBadge(r.status) : "—"}</td>
+          <td>${escapeHtml(tc.expectation ?? "—")}</td>
           <td>${m ? `${m.domContentLoadedMs}ms` : "—"}</td>
           <td>${m ? `${m.loadEventMs}ms` : "—"}</td>
           <td>${m ? `${m.resourceCount}` : "—"}</td>
@@ -109,12 +140,12 @@ export async function buildHtmlReport(testRunId: string, reportDir: string, scre
     return `
       <h2>Performance tests (${cases.length})</h2>
       <table>
-        <thead><tr><th>Test case</th><th>Status</th><th>DOMContentLoaded</th><th>Load event</th><th>Resources</th><th>Transfer size</th></tr></thead>
+        <thead><tr><th>Test case</th><th>Status</th><th>Expected result</th><th>DOMContentLoaded</th><th>Load event</th><th>Resources</th><th>Transfer size</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>`;
   };
 
-  const flowSectionHtml = (cases: typeof run.testCases) => {
+  const flowSectionHtml = (title: string, cases: typeof run.testCases) => {
     if (!cases.length) return "";
     const blocks = cases
       .map((tc) => {
@@ -136,14 +167,15 @@ export async function buildHtmlReport(testRunId: string, reportDir: string, scre
           .join("\n");
         return `
         <h3>${escapeHtml(tc.name)} ${r ? statusBadge(r.status) : ""}</h3>
-        <p style="color:#59636e">${escapeHtml(r?.actual ?? "")}</p>
+        <p style="color:#59636e"><strong>Expected:</strong> ${escapeHtml(tc.expectation ?? "—")}</p>
+        <p style="color:#59636e"><strong>Actual:</strong> ${escapeHtml(r?.actual ?? "")}</p>
         <table>
           <thead><tr><th>#</th><th>Action</th><th>Status</th><th>Detail</th><th>Screenshot</th></tr></thead>
           <tbody>${steps}</tbody>
         </table>`;
       })
       .join("\n");
-    return `<h2>Flow tests (${cases.length})</h2>${blocks}`;
+    return `<h2>${title} (${cases.length})</h2>${blocks}`;
   };
 
   const regressionHtml = () => {
@@ -181,17 +213,22 @@ export async function buildHtmlReport(testRunId: string, reportDir: string, scre
   th { background: #f6f8fa; }
   .findings { background: #fff8f6; border: 1px solid #ffb3a3; border-radius: 8px; padding: 16px; margin-bottom: 24px; }
   .findings ul { margin: 4px 0; padding-left: 20px; font-size: 13px; }
+  .narrative-summary { font-size: 15px; line-height: 1.6; color: #1f2328; max-width: 780px; margin-bottom: 24px; }
 </style>
 </head>
 <body>
   <h1>Application Test Report</h1>
   <div class="meta">
+    ${run.moduleName ? `Module: <strong>${escapeHtml(run.moduleName)}</strong><br/>` : ""}
     Target: <strong>${escapeHtml(run.targetUrl)}</strong><br/>
-    Account: ${run.account ? escapeHtml(run.account.label) + " (" + escapeHtml(run.account.role ?? "n/a") + ")" : "None (anonymous)"}<br/>
-    Mode: ${escapeHtml(run.mode)}<br/>
+    ${run.modules.length ? `Page(s)/form(s) discovered: <strong>${run.modules.map((m) => escapeHtml(m.name)).join(", ")}</strong><br/>` : ""}
+    Run by: ${run.createdByUsername ? escapeHtml(run.createdByUsername) : "Unknown"}<br/>
+    Mode: ${run.mode === "quick" ? "Quick/sanity — " : ""}${escapeHtml(testTypesLabel(run.enabledCategoriesJson))}<br/>
     Run started: ${run.startedAt.toISOString()}<br/>
     Run completed: ${run.completedAt?.toISOString() ?? "—"}
   </div>
+
+  <p class="narrative-summary">${escapeHtml(narrativeSummary)}</p>
 
   <div class="summary">
     <div class="stat"><div class="n">${run.totalCases}</div><div class="l">Total cases</div></div>
@@ -217,11 +254,13 @@ export async function buildHtmlReport(testRunId: string, reportDir: string, scre
   ${sectionHtml("Smoke tests", byCategory.smoke)}
   ${sectionHtml("Boundary value tests", byCategory.boundary)}
   ${sectionHtml("Vulnerability tests", byCategory.vulnerability)}
+  ${sectionHtml("Login boundary tests (BVA)", byCategory.loginBoundary)}
   ${stressSectionHtml(byCategory.stress)}
   ${performanceSectionHtml(byCategory.performance)}
   ${sectionHtml("Compatibility tests", byCategory.compatibility)}
   ${sectionHtml("Accessibility tests", byCategory.accessibility)}
-  ${flowSectionHtml(byCategory.flow)}
+  ${flowSectionHtml("Flow tests", byCategory.flow)}
+  ${flowSectionHtml("Custom test stories", byCategory.story)}
 </body>
 </html>`;
 

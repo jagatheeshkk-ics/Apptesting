@@ -200,6 +200,7 @@ const ALL_CATEGORIES: TestCategory[] = [
   "smoke",
   "boundary",
   "vulnerability",
+  "loginBoundary",
   "stress",
   "performance",
   "compatibility",
